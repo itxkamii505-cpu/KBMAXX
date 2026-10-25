@@ -569,7 +569,7 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
 
   return (
     <div className="min-h-screen bg-[#edf2f7] p-2.5 sm:p-5 lg:p-6 font-sans text-slate-800 -m-2 sm:-m-4 lg:-m-6">
-      <div className="max-w-4xl mx-auto space-y-4" id="sms-reports-view">
+      <div className="max-w-7xl xl:max-w-[1550px] w-full mx-auto space-y-4" id="sms-reports-view">
         
         {/* TOP HEADER: Clean Title & Team Reports 2 indicator */}
         <div className="py-2 px-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

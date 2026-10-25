@@ -292,7 +292,7 @@ export const AdminLayout: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <main className="flex-1 p-2 sm:p-4 lg:p-6 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-2 sm:p-3.5 md:p-5 lg:p-6 xl:p-8 max-w-[1600px] w-full mx-auto">
           <Suspense fallback={<div className="py-16 text-center text-xs font-mono text-emerald-400 animate-pulse">Loading...</div>}>
           {activeTab === 'sms-reports' && <SMSReportsView reportType="primary" />}
           {activeTab === 'sms-reports-2' && <SMSReportsView reportType="reports2" />}

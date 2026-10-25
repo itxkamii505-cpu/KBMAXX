@@ -48,7 +48,7 @@ export const ClientPortalLayout: React.FC = () => {
     <div className="min-h-screen bg-[#edf2f7] text-slate-800 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
       {/* Top Header Navigation for Member Portal - White + Green + Blue theme */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/90 shadow-2xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-4 md:px-6 h-16 flex items-center justify-between gap-2 sm:gap-3">
           {/* Logo & Section Tabs */}
           <div className="flex items-center gap-3 sm:gap-4">
             <BrandLogo size="md" showTagline={false} />

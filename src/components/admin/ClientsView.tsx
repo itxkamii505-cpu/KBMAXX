@@ -1054,12 +1054,12 @@ export const ClientsView: React.FC = () => {
       {/* Security Master PIN Delete Confirmation Modal */}
       <AnimatePresence>
         {deletePinModal.isOpen && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md bg-slate-900 border-2 border-rose-500/50 rounded-3xl p-6 sm:p-7 shadow-[0_25px_60px_rgba(0,0,0,0.9),0_0_35px_rgba(244,63,94,0.25)] space-y-4 ring-1 ring-white/10"
+              className="w-full max-w-md bg-slate-900 border-2 border-rose-500/50 rounded-3xl p-5 sm:p-7 shadow-[0_25px_60px_rgba(0,0,0,0.9),0_0_35px_rgba(244,63,94,0.25)] space-y-4 ring-1 ring-white/10 max-h-[92vh] overflow-y-auto"
             >
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0 shadow-lg">
@@ -1170,452 +1170,492 @@ export const ClientsView: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* CREATE / EDIT MODAL */}
+      {/* CREATE / EDIT MODAL - PC TYPE & FULLY RESPONSIVE FOR MOBILE & TABLET */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 overflow-hidden">
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-slate-900 border-2 border-blue-500/40 rounded-3xl p-6 sm:p-7 shadow-[0_25px_60px_rgba(0,0,0,0.9),0_0_35px_rgba(37,99,235,0.2)] space-y-4 ring-1 ring-white/10"
+            initial={{ opacity: 0, scale: 0.96, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 15 }}
+            className="w-full sm:max-w-3xl lg:max-w-4xl bg-slate-900 border sm:border-2 border-blue-500/40 rounded-t-3xl sm:rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.9),0_0_35px_rgba(37,99,235,0.25)] ring-1 ring-white/10 flex flex-col max-h-[92vh] sm:max-h-[88vh] overflow-hidden"
           >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+            {/* Modal Header (Pinned / Sticky) */}
+            <div className="px-5 sm:px-7 py-4 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-900/95 backdrop-blur-md">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 to-blue-600 flex items-center justify-center text-white shadow-md shadow-emerald-950/40 shrink-0">
                   <UserPlus className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">
-                    {editingClient ? `Edit Client (@${editingClient.username})` : 'Add New Client'}
-                  </h3>
-                  <p className="text-[11px] text-slate-400 font-sans">
-                    {editingClient ? 'View and update client credentials' : 'Create simple client login access'}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base sm:text-lg font-black text-white tracking-tight">
+                      {editingClient ? `Edit Client (@${editingClient.username})` : 'Create New Client Account'}
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                      {editingClient ? `ID #${editingClient.id.slice(0, 6)}` : 'Client Access Portal'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-400 font-sans mt-0.5">
+                    {editingClient ? 'Update login credentials, permissions, and report routing' : 'Configure client login access, WhiteNoise API-2, and team report filters'}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-xs font-bold cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold cursor-pointer transition-colors shrink-0"
               >
                 ✕
               </button>
             </div>
 
-            {/* FORM: Strictly Simple & Pure when Creating! */}
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-              {/* 1. Client Username */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="font-bold text-white uppercase tracking-wider text-[11px]">
-                    Client Username
-                  </label>
-                  {formData.username.trim().length > 0 && (
-                    clients.some(c => c.username.toLowerCase() === formData.username.trim().toLowerCase() && c.id !== editingClient?.id) ? (
-                      <span className="text-[10px] font-bold text-rose-400 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" />
-                        <span>Already taken!</span>
-                      </span>
-                    ) : formData.username.trim().length < 5 ? (
-                      <span className="text-[10px] text-amber-400 font-medium">Min 5 chars</span>
-                    ) : (
-                      <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>Available</span>
-                      </span>
-                    )
-                  )}
-                </div>
-                <input
-                  type="text"
-                  required
-                  minLength={5}
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  placeholder="e.g. client01"
-                  className={`w-full px-3.5 py-2.5 bg-slate-950 border rounded-xl text-white font-mono text-sm transition-colors ${
-                    clients.some(c => c.username.toLowerCase() === formData.username.trim().toLowerCase() && c.id !== editingClient?.id)
-                      ? 'border-rose-500 focus:border-rose-400'
-                      : 'border-slate-700 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400'
-                  }`}
-                />
-              </div>
-
-              {/* 2. Client Password (Visible in modal with eye toggle so Admin knows/changes password) */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="font-bold text-white uppercase tracking-wider text-[11px]">
-                    Client Password
-                  </label>
-                  {formData.password.trim().length > 0 && (
-                    formData.password.trim().length < 5 ? (
-                      <span className="text-[10px] text-amber-400 font-medium">Min 5 chars</span>
-                    ) : (
-                      <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>Valid</span>
-                      </span>
-                    )
-                  )}
-                </div>
-                <div className="relative">
-                  <input
-                    type={passwordVisibleInModal ? 'text' : 'password'}
-                    required={!editingClient}
-                    minLength={5}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder={editingClient ? 'Leave blank to keep current password' : 'Type password (min 5 chars)'}
-                    className="w-full px-3.5 py-2.5 pr-10 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      triggerHapticFeedback(10);
-                      setPasswordVisibleInModal(!passwordVisibleInModal);
-                    }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 cursor-pointer"
-                    title={passwordVisibleInModal ? 'Hide password' : 'Show password'}
-                  >
-                    {passwordVisibleInModal ? <EyeOff className="w-4 h-4 text-emerald-400" /> : <Eye className="w-4 h-4 text-slate-400" />}
-                  </button>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  {editingClient ? 'Click eye icon to view existing password or enter a new one to update.' : 'Enter client password. Password will stay protected and hidden in client list.'}
-                </p>
-              </div>
-
-              {/* 3. Maximum Allowed Users / Count Limit */}
-              <div>
-                <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1.5">
-                  Max Allowed Concurrency Limit
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    required
-                    value={formData.maxConcurrentSessions}
-                    onChange={(e) => setFormData({ ...formData, maxConcurrentSessions: parseInt(e.target.value) || 3 })}
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-                  />
-                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-sans">
-                    Users
-                  </span>
-                </div>
-                <p className="text-[10px] text-blue-300 mt-1">
-                  Maximum concurrent devices/users allowed for this client ID (Default: 3 users).
-                </p>
-              </div>
-
-              {/* In EDIT MODE ONLY: Show Status and Notes */}
-              {editingClient && (
-                <>
-                  <div>
-                    <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1.5">
-                      Account Status
-                    </label>
-                    <select
-                      value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'inactive' })}
-                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white font-sans text-xs focus:border-emerald-400"
-                    >
-                      <option value="active">Active (Permit Live SMS Access)</option>
-                      <option value="inactive">Inactive / Suspended (Block & Kick)</option>
-                    </select>
+            {/* FORM WRAPPER */}
+            <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {/* Scrollable Modal Body (Smooth Scrolling on Mobile, Tablet & PC) */}
+              <div className="flex-1 overflow-y-auto px-5 sm:px-7 py-5 space-y-5 text-xs overscroll-contain">
+                
+                {/* SECTION 1: PRIMARY ACCOUNT CREDENTIALS (PC 2-Column Responsive Grid) */}
+                <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-800/80 pb-2.5">
+                    <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">
+                      1
+                    </div>
+                    <span className="font-bold text-white text-xs uppercase tracking-wider">
+                      Account Credentials & Concurrency
+                    </span>
                   </div>
 
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Username */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="font-bold text-white uppercase tracking-wider text-[11px]">
+                          Client Username
+                        </label>
+                        {formData.username.trim().length > 0 && (
+                          clients.some(c => c.username.toLowerCase() === formData.username.trim().toLowerCase() && c.id !== editingClient?.id) ? (
+                            <span className="text-[10px] font-bold text-rose-400 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              <span>Already taken!</span>
+                            </span>
+                          ) : formData.username.trim().length < 5 ? (
+                            <span className="text-[10px] text-amber-400 font-medium">Min 5 chars</span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Available</span>
+                            </span>
+                          )
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        minLength={5}
+                        value={formData.username}
+                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                        placeholder="e.g. client01"
+                        className={`w-full px-3.5 py-2.5 bg-slate-900 border rounded-xl text-white font-mono text-sm transition-colors ${
+                          clients.some(c => c.username.toLowerCase() === formData.username.trim().toLowerCase() && c.id !== editingClient?.id)
+                            ? 'border-rose-500 focus:border-rose-400'
+                            : 'border-slate-700 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400'
+                        }`}
+                      />
+                    </div>
+
+                    {/* Password */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="font-bold text-white uppercase tracking-wider text-[11px]">
+                          Client Password
+                        </label>
+                        {formData.password.trim().length > 0 && (
+                          formData.password.trim().length < 5 ? (
+                            <span className="text-[10px] text-amber-400 font-medium">Min 5 chars</span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Valid</span>
+                            </span>
+                          )
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          type={passwordVisibleInModal ? 'text' : 'password'}
+                          required={!editingClient}
+                          minLength={5}
+                          value={formData.password}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          placeholder={editingClient ? 'Leave blank to keep current' : 'Enter password (min 5 chars)'}
+                          className="w-full px-3.5 py-2.5 pr-10 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 transition-colors"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            triggerHapticFeedback(10);
+                            setPasswordVisibleInModal(!passwordVisibleInModal);
+                          }}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 cursor-pointer"
+                          title={passwordVisibleInModal ? 'Hide password' : 'Show password'}
+                        >
+                          {passwordVisibleInModal ? <EyeOff className="w-4 h-4 text-emerald-400" /> : <Eye className="w-4 h-4 text-slate-400" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Concurrency Limit */}
+                    <div>
+                      <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1.5">
+                        Max Allowed Concurrency Limit
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="1"
+                          max="10"
+                          required
+                          value={formData.maxConcurrentSessions}
+                          onChange={(e) => setFormData({ ...formData, maxConcurrentSessions: parseInt(e.target.value) || 3 })}
+                          className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+                        />
+                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-sans">
+                          Users
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-blue-300 mt-1">
+                        Concurrent devices/users allowed for this client ID (Default: 3 users).
+                      </p>
+                    </div>
+
+                    {/* Status (In edit mode) or Session Timeout Info */}
+                    {editingClient ? (
+                      <div>
+                        <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1.5">
+                          Account Status
+                        </label>
+                        <select
+                          value={formData.status}
+                          onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'inactive' })}
+                          className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-sans text-xs focus:border-emerald-400"
+                        >
+                          <option value="active">Active (Permit Portal Access)</option>
+                          <option value="inactive">Inactive / Suspended (Block & Kick)</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1.5">
+                          Session Security
+                        </label>
+                        <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-300 flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>Auto-timeout: <strong className="text-emerald-400">{settings?.clientSessionMinutes || 5} minutes</strong> of inactivity</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Notes & Customer Reference */}
                   <div>
                     <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1.5">
-                      Customer Reference / Notes
+                      Customer Reference / Notes (Optional)
                     </label>
                     <textarea
                       rows={2}
                       value={formData.notes}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      placeholder="Optional notes or contact details"
-                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-sans text-xs focus:border-emerald-400"
+                      placeholder="Optional notes, customer Skype/Telegram or contact reference"
+                      className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-sans text-xs focus:border-emerald-400"
                     />
                   </div>
-                </>
-              )}
-
-              {/* CARD 2: API-2 / WHITENOISE DIRECT SMS (SIDEBAR 2 CONFIGURATION) */}
-              <div className="bg-gradient-to-b from-indigo-950/40 to-slate-950/80 border-2 border-indigo-500/40 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-inner">
-                {/* Card 2 Header */}
-                <div className="flex items-center justify-between border-b border-indigo-500/20 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-400">
-                      <Zap className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-mono font-black uppercase tracking-wider text-indigo-400 block">
-                        CARD 2 • API-2 GATEWAY
-                      </span>
-                      <h4 className="text-xs font-bold text-white">
-                        WhiteNoise SMS (Sidebar 2 Access)
-                      </h4>
-                    </div>
-                  </div>
-
-                  {/* Toggle Switch */}
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.allowApi2}
-                      onChange={(e) => setFormData({ ...formData, allowApi2: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                  </label>
                 </div>
 
-                {/* Card 2 Active Configuration Options */}
-                {formData.allowApi2 ? (
-                  <div className="space-y-3 pt-1">
-                    <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-200 text-[11px] flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                      <span>
-                        <strong>Enabled:</strong> This client will see <strong>Sidebar 2 (WhiteNoise SMS)</strong> in their portal to fetch live SMS & verification codes.
-                      </span>
-                    </div>
-
-                    {/* 1. Client-Specific API Key */}
-                    <div>
-                      <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1">
-                        WhiteNoise API Key (12 Characters)
-                      </label>
-                      <input
-                        type="text"
-                        maxLength={64}
-                        value={formData.api2ApiKey}
-                        onChange={(e) => setFormData({ ...formData, api2ApiKey: e.target.value })}
-                        placeholder="Leave blank to use Admin Master Key, or enter 12-char key"
-                        className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs focus:border-indigo-400"
-                      />
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        {formData.api2ApiKey.trim() ? `${formData.api2ApiKey.trim().length} characters entered` : 'Empty = Uses system master WhiteNoise key configured by Admin.'}
-                      </p>
-                    </div>
-
-                    {/* 2. Assigned Phone Numbers */}
-                    <div>
-                      <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1">
-                        Assigned Phone Numbers (Target Numbers)
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.api2PhoneNumbers}
-                        onChange={(e) => setFormData({ ...formData, api2PhoneNumbers: e.target.value })}
-                        placeholder="e.g. +959686338504, +959686338505 (comma-separated)"
-                        className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs focus:border-indigo-400"
-                      />
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        Phones this client is permitted to view. Leave empty to allow any number.
-                      </p>
-                    </div>
-
-                    {/* 3. Service Filter & Since Window */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* SECTION 2: API-2 / WHITENOISE DIRECT SMS (PC TYPE DESKTOP CARD) */}
+                <div className="bg-gradient-to-b from-indigo-950/40 to-slate-950/80 border-2 border-indigo-500/40 rounded-2xl p-4 sm:p-5 space-y-4 shadow-inner">
+                  {/* Card 2 Header */}
+                  <div className="flex items-center justify-between border-b border-indigo-500/20 pb-3 flex-wrap gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-400 shrink-0">
+                        <Zap className="w-4 h-4" />
+                      </div>
                       <div>
-                        <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1">
-                          Default Service Filter
-                        </label>
+                        <span className="text-[10px] font-mono font-black uppercase tracking-wider text-indigo-400 block">
+                          SECTION 2 • API-2 GATEWAY
+                        </span>
+                        <h4 className="text-xs sm:text-sm font-bold text-white">
+                          WhiteNoise SMS (Sidebar 2 Access)
+                        </h4>
+                      </div>
+                    </div>
+
+                    {/* Toggle Switch */}
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.allowApi2}
+                        onChange={(e) => setFormData({ ...formData, allowApi2: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                      <span className="ml-2 text-xs font-bold text-white font-mono">
+                        {formData.allowApi2 ? 'ENABLED' : 'DISABLED'}
+                      </span>
+                    </label>
+                  </div>
+
+                  {formData.allowApi2 ? (
+                    <div className="space-y-4 pt-1">
+                      <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-200 text-xs flex items-center gap-2.5">
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                        <span>
+                          <strong>Sidebar 2 Enabled:</strong> Client will see WhiteNoise SMS tab to view direct messages and verification OTPs.
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* API Key */}
+                        <div>
+                          <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1">
+                            WhiteNoise API Key (12 Characters)
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={64}
+                            value={formData.api2ApiKey}
+                            onChange={(e) => setFormData({ ...formData, api2ApiKey: e.target.value })}
+                            placeholder="Leave blank for Master Key, or custom key"
+                            className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-xs focus:border-indigo-400"
+                          />
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            {formData.api2ApiKey.trim() ? `${formData.api2ApiKey.trim().length} characters entered` : 'Empty = Uses Admin master key.'}
+                          </p>
+                        </div>
+
+                        {/* Assigned Phones */}
+                        <div>
+                          <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1">
+                            Assigned Phone Numbers (Target Numbers)
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.api2PhoneNumbers}
+                            onChange={(e) => setFormData({ ...formData, api2PhoneNumbers: e.target.value })}
+                            placeholder="e.g. +959686338504, +959686338505"
+                            className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-xs focus:border-indigo-400"
+                          />
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            Comma-separated numbers client can view. Empty allows any.
+                          </p>
+                        </div>
+
+                        {/* Service filter */}
+                        <div>
+                          <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1">
+                            Default Service Filter
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.api2DefaultService}
+                            onChange={(e) => setFormData({ ...formData, api2DefaultService: e.target.value })}
+                            placeholder="e.g. tiktok (or empty for all)"
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-sans text-xs focus:border-indigo-400"
+                          />
+                        </div>
+
+                        {/* Since window */}
+                        <div>
+                          <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1">
+                            Default Time Range (`since`)
+                          </label>
+                          <select
+                            value={formData.api2Since}
+                            onChange={(e) => setFormData({ ...formData, api2Since: Number(e.target.value) })}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-sans text-xs focus:border-indigo-400"
+                          >
+                            <option value={15}>15 seconds</option>
+                            <option value={30}>30 seconds</option>
+                            <option value={60}>60 seconds (Default)</option>
+                            <option value={120}>2 minutes</option>
+                            <option value={300}>5 minutes</option>
+                            <option value={600}>10 minutes (Max)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Conversion toggle */}
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                        <div>
+                          <span className="text-xs font-bold text-white block">
+                            Permit Conversion Registration
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            Allow client to mark SMS as converted via POST /register-sms-conversion
+                          </span>
+                        </div>
                         <input
-                          type="text"
-                          value={formData.api2DefaultService}
-                          onChange={(e) => setFormData({ ...formData, api2DefaultService: e.target.value })}
-                          placeholder="e.g. tiktok (or empty for all)"
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-sans text-xs focus:border-indigo-400"
+                          type="checkbox"
+                          checked={formData.api2AllowConversion}
+                          onChange={(e) => setFormData({ ...formData, api2AllowConversion: e.target.checked })}
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700 cursor-pointer"
                         />
                       </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-400 text-xs">
+                      WhiteNoise SMS access is disabled for this client.
+                    </div>
+                  )}
+                </div>
 
+                {/* SECTION 3: TEAM ACCESS & DATA PRIVACY (SMS REPORTS 2) */}
+                <div className="bg-gradient-to-b from-emerald-950/30 to-slate-950/80 border-2 border-emerald-500/40 rounded-2xl p-4 sm:p-5 space-y-4 shadow-inner">
+                  {/* Card 3 Header */}
+                  <div className="flex items-center justify-between border-b border-emerald-500/20 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 shrink-0">
+                        <Shield className="w-4 h-4" />
+                      </div>
                       <div>
-                        <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1">
-                          Default Time Range (`since`)
-                        </label>
-                        <select
-                          value={formData.api2Since}
-                          onChange={(e) => setFormData({ ...formData, api2Since: Number(e.target.value) })}
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-sans text-xs focus:border-indigo-400"
+                        <span className="text-[10px] font-mono font-black uppercase tracking-wider text-emerald-400 block">
+                          SECTION 3 • TEAM SHARING & PRIVACY
+                        </span>
+                        <h4 className="text-xs sm:text-sm font-bold text-white">
+                          SMS Reports 2 (Restricted Team Sharing)
+                        </h4>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 pt-1">
+                    {/* Portal View Selection (PC 2-Column Grid) */}
+                    <div>
+                      <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-2">
+                        Assigned Reports Portal
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label 
+                          onClick={() => setFormData({ ...formData, panelType: 'primary' })}
+                          className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                            formData.panelType === 'primary'
+                              ? 'border-blue-500 bg-blue-500/15 text-white ring-1 ring-blue-500/40'
+                              : 'border-slate-800 bg-slate-950/70 text-slate-400 hover:border-slate-700'
+                          }`}
                         >
-                          <option value={15}>15 seconds</option>
-                          <option value={30}>30 seconds</option>
-                          <option value={60}>60 seconds (Default)</option>
-                          <option value={120}>2 minutes</option>
-                          <option value={300}>5 minutes</option>
-                          <option value={600}>10 minutes (Max)</option>
-                        </select>
+                          <input
+                            type="radio"
+                            name="panelType"
+                            checked={formData.panelType === 'primary'}
+                            onChange={() => setFormData({ ...formData, panelType: 'primary' })}
+                            className="mt-1 text-blue-500 focus:ring-0"
+                          />
+                          <div>
+                            <div className="text-xs font-bold text-white">Primary Portal (Full Access)</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">Standard client view with full message access</div>
+                          </div>
+                        </label>
+
+                        <label 
+                          onClick={() => setFormData({ ...formData, panelType: 'reports2' })}
+                          className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                            formData.panelType === 'reports2'
+                              ? 'border-emerald-500 bg-emerald-500/15 text-white ring-1 ring-emerald-500/40'
+                              : 'border-slate-800 bg-slate-950/70 text-slate-400 hover:border-slate-700'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="panelType"
+                            checked={formData.panelType === 'reports2'}
+                            onChange={() => setFormData({ ...formData, panelType: 'reports2' })}
+                            className="mt-1 text-emerald-500 focus:ring-0"
+                          />
+                          <div>
+                            <div className="text-xs font-bold text-emerald-300">Reports 2 (Team Portal)</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">Enforces independent team stop rules & privacy</div>
+                          </div>
+                        </label>
                       </div>
                     </div>
 
-                    {/* 4. Allow Conversion Registration */}
-                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                    {/* Mask Sensitive Body Toggle */}
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900/80 border border-slate-800">
                       <div>
-                        <span className="text-xs font-bold text-white block">
-                          Permit Conversion Registration
+                        <span className="text-xs font-bold text-white block flex items-center gap-1.5">
+                          <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Mask Sensitive Message Body</span>
                         </span>
                         <span className="text-[10px] text-slate-400">
-                          Allow client to mark SMS as converted via POST /register-sms-conversion
+                          Replaces sensitive text with <code className="text-amber-300">[Protected] OTP: ****</code> to protect customer payload data from team members
                         </span>
                       </div>
                       <input
                         type="checkbox"
-                        checked={formData.api2AllowConversion}
-                        onChange={(e) => setFormData({ ...formData, api2AllowConversion: e.target.checked })}
-                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700"
+                        checked={formData.maskSensitiveBody}
+                        onChange={(e) => setFormData({ ...formData, maskSensitiveBody: e.target.checked })}
+                        className="w-4 h-4 rounded text-emerald-500 focus:ring-emerald-500 bg-slate-900 border-slate-700 cursor-pointer"
                       />
                     </div>
-                  </div>
-                ) : (
-                  <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-400 text-[11px]">
-                    Access disabled. This client will NOT see Sidebar 2 (WhiteNoise SMS) in their portal.
-                  </div>
-                )}
-              </div>
 
-              {/* CARD 3: TEAM ACCESS & DATA PRIVACY (SMS REPORTS 2) */}
-              <div className="bg-gradient-to-b from-emerald-950/30 to-slate-950/80 border-2 border-emerald-500/40 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-inner">
-                {/* Card 3 Header */}
-                <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400">
-                      <Shield className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-mono font-black uppercase tracking-wider text-emerald-400 block">
-                        CARD 3 • TEAM ACCESS & PRIVACY
-                      </span>
-                      <h4 className="text-xs font-bold text-white">
-                        SMS Reports 2 (Restricted Team Sharing)
-                      </h4>
+                    {/* Optional Allowed Apps & Stopped CLIs */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1">
+                          Reports 2 Allowed Apps
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.reports2AllowedApps}
+                          onChange={(e) => setFormData({ ...formData, reports2AllowedApps: e.target.value })}
+                          placeholder="e.g. WHATSAPP, TELEGRAM (or empty for all)"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-sans text-xs focus:border-emerald-400"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Only these apps will be visible in Reports 2.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1">
+                          Reports 2 Specific Stopped CLIs
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.reports2StoppedClis}
+                          onChange={(e) => setFormData({ ...formData, reports2StoppedClis: e.target.value })}
+                          placeholder="e.g. CLI1, CLI2, 959... (comma-separated)"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-sans text-xs focus:border-rose-400"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          These CLIs are stopped specifically for this client.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-3 pt-1">
-                  {/* Portal View Selection */}
-                  <div>
-                    <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1.5">
-                      Assigned Reports Portal
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <label 
-                        onClick={() => setFormData({ ...formData, panelType: 'primary' })}
-                        className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                          formData.panelType === 'primary'
-                            ? 'border-blue-500 bg-blue-500/10 text-white'
-                            : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="panelType"
-                          checked={formData.panelType === 'primary'}
-                          onChange={() => setFormData({ ...formData, panelType: 'primary' })}
-                          className="mt-0.5 text-blue-500 focus:ring-0"
-                        />
-                        <div>
-                          <div className="text-xs font-bold text-white">Primary Portal (Full Access)</div>
-                          <div className="text-[10px] text-slate-400">Standard client view with full message access</div>
-                        </div>
-                      </label>
-
-                      <label 
-                        onClick={() => setFormData({ ...formData, panelType: 'reports2' })}
-                        className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                          formData.panelType === 'reports2'
-                            ? 'border-emerald-500 bg-emerald-500/10 text-white'
-                            : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="panelType"
-                          checked={formData.panelType === 'reports2'}
-                          onChange={() => setFormData({ ...formData, panelType: 'reports2' })}
-                          className="mt-0.5 text-emerald-500 focus:ring-0"
-                        />
-                        <div>
-                          <div className="text-xs font-bold text-emerald-300">Reports 2 (Team Portal)</div>
-                          <div className="text-[10px] text-slate-400">Enforces independent team stop rules & privacy</div>
-                        </div>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Mask Sensitive Body Toggle */}
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
-                    <div>
-                      <span className="text-xs font-bold text-white block flex items-center gap-1.5">
-                        <EyeOff className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Mask Sensitive Message Body</span>
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        Replaces sensitive text with <code className="text-amber-300">[Protected] OTP: ****</code> to protect customer payload data from team members
-                      </span>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={formData.maskSensitiveBody}
-                      onChange={(e) => setFormData({ ...formData, maskSensitiveBody: e.target.checked })}
-                      className="w-4 h-4 rounded text-emerald-500 focus:ring-emerald-500 bg-slate-900 border-slate-700 cursor-pointer"
-                    />
-                  </div>
-
-                  {/* Optional Allowed Apps & Stopped CLIs */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1">
-                        Reports 2 Allowed Apps
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.reports2AllowedApps}
-                        onChange={(e) => setFormData({ ...formData, reports2AllowedApps: e.target.value })}
-                        placeholder="e.g. WHATSAPP, TELEGRAM (or empty for all)"
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-sans text-xs focus:border-emerald-400"
-                      />
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        Only these apps will be visible in Reports 2.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="block font-bold text-white uppercase tracking-wider text-[11px] mb-1">
-                        Reports 2 Specific Stopped CLIs
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.reports2StoppedClis}
-                        onChange={(e) => setFormData({ ...formData, reports2StoppedClis: e.target.value })}
-                        placeholder="e.g. CLI1, CLI2, 959... (comma-separated)"
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-sans text-xs focus:border-rose-400"
-                      />
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        These CLIs are stopped specifically for this client.
-                      </p>
-                    </div>
-                  </div>
-                </div>
               </div>
 
-              {/* Form Action Buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-emerald-600 to-blue-600 hover:from-emerald-400 hover:to-blue-500 text-white text-xs font-black shadow-lg shadow-emerald-950/40 border border-white/20 cursor-pointer active:scale-95"
-                >
-                  {editingClient ? 'Save Changes' : 'Create Client'}
-                </button>
+              {/* Form Action Buttons (Sticky at bottom, accessible on mobile & PC) */}
+              <div className="px-5 sm:px-7 py-3.5 border-t border-slate-800 shrink-0 bg-slate-900/95 backdrop-blur-md flex items-center justify-between gap-3">
+                <div className="hidden sm:flex items-center gap-2 text-[11px] text-slate-400 font-mono">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>Credentials stored with AES-256-GCM encryption</span>
+                </div>
+                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-emerald-600 to-blue-600 hover:from-emerald-400 hover:to-blue-500 text-white text-xs font-black shadow-lg shadow-emerald-950/40 border border-white/20 cursor-pointer active:scale-95 transition-all"
+                  >
+                    {editingClient ? 'Save Changes' : 'Create Client'}
+                  </button>
+                </div>
               </div>
             </form>
           </motion.div>
