@@ -1,0 +1,260 @@
+@import "tailwindcss";
+
+@layer base {
+  html.light {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+}
+
+/* =========================================================================
+   LIGHT / SUN THEME PRECISION ENGINE
+   Eliminates dark-on-dark unreadable text and guarantees crystal-clear contrast
+   ========================================================================= */
+html.light body,
+html.light {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* Base slate backgrounds mapped cleanly to crisp light surfaces */
+html.light [class*="bg-slate-950"],
+html.light .bg-slate-950 {
+  background-color: #f8fafc !important;
+}
+
+html.light [class*="bg-slate-900"],
+html.light .bg-slate-900 {
+  background-color: #ffffff !important;
+}
+
+html.light [class*="bg-slate-850"],
+html.light .bg-slate-850 {
+  background-color: #f1f5f9 !important;
+}
+
+html.light [class*="bg-slate-800"],
+html.light .bg-slate-800 {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* Interactive hover states */
+html.light [class*="hover:bg-slate-800"]:hover,
+html.light [class*="hover:bg-slate-850"]:hover,
+html.light [class*="hover:bg-slate-700"]:hover,
+html.light [class*="hover:bg-slate-900"]:hover {
+  background-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+/* High contrast borders */
+html.light [class*="border-slate-800"],
+html.light [class*="border-slate-700"],
+html.light [class*="divide-slate-800"] {
+  border-color: #cbd5e1 !important;
+}
+
+/* Base text contrast - sharp and dark */
+html.light .text-white,
+html.light .text-slate-100 {
+  color: #0f172a !important;
+}
+
+html.light .text-slate-200,
+html.light .text-slate-300 {
+  color: #1e293b !important;
+}
+
+html.light .text-slate-400 {
+  color: #475569 !important;
+}
+
+html.light .text-slate-500 {
+  color: #64748b !important;
+}
+
+html.light .text-slate-600 {
+  color: #64748b !important;
+}
+
+html.light .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+/* Preserve dark text on bright accent buttons */
+html.light .text-slate-950 {
+  color: #020617 !important;
+}
+
+/* Badges and Chips: Convert deep dark backgrounds into soft pastel badges with rich readable text */
+html.light [class*="bg-emerald-950"],
+html.light .bg-emerald-950 {
+  background-color: #d1fae5 !important;
+  border-color: #6ee7b7 !important;
+}
+html.light [class*="text-emerald-300"],
+html.light [class*="text-emerald-400"],
+html.light .text-emerald-300,
+html.light .text-emerald-400 {
+  color: #047857 !important;
+}
+
+html.light [class*="bg-sky-950"],
+html.light .bg-sky-950 {
+  background-color: #e0f2fe !important;
+  border-color: #7dd3fc !important;
+}
+html.light [class*="text-sky-300"],
+html.light [class*="text-sky-400"],
+html.light .text-sky-300,
+html.light .text-sky-400 {
+  color: #0284c7 !important;
+}
+
+html.light [class*="bg-indigo-950"],
+html.light .bg-indigo-950 {
+  background-color: #e0e7ff !important;
+  border-color: #a5b4fc !important;
+}
+html.light [class*="text-indigo-300"],
+html.light [class*="text-indigo-400"],
+html.light .text-indigo-300,
+html.light .text-indigo-400 {
+  color: #4338ca !important;
+}
+
+html.light [class*="bg-rose-950"],
+html.light .bg-rose-950 {
+  background-color: #ffe4e6 !important;
+  border-color: #fda4af !important;
+}
+html.light [class*="text-rose-300"],
+html.light [class*="text-rose-400"],
+html.light .text-rose-300,
+html.light .text-rose-400 {
+  color: #be123c !important;
+}
+
+html.light [class*="bg-amber-950"],
+html.light .bg-amber-950 {
+  background-color: #fef3c7 !important;
+  border-color: #fcd34d !important;
+}
+html.light [class*="text-amber-300"],
+html.light [class*="text-amber-400"],
+html.light .text-amber-300,
+html.light .text-amber-400 {
+  color: #b45309 !important;
+}
+
+html.light [class*="bg-purple-950"],
+html.light .bg-purple-950 {
+  background-color: #f3e8ff !important;
+  border-color: #d8b4fe !important;
+}
+html.light [class*="text-purple-300"],
+html.light [class*="text-purple-400"],
+html.light .text-purple-300,
+html.light .text-purple-400 {
+  color: #7e22ce !important;
+}
+
+/* Inputs, Selects, and Dropdowns in Light Mode */
+html.light input,
+html.light select,
+html.light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+html.light select option,
+html.light select optgroup {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* Table Headers and Cells */
+html.light thead th {
+  background-color: #f1f5f9 !important;
+  color: #334155 !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light tbody tr:hover {
+  background-color: #f8fafc !important;
+}
+
+/* Primary Action Buttons on Dark Accents */
+html.light .bg-blue-600,
+html.light .bg-purple-600,
+html.light .bg-rose-600,
+html.light .bg-emerald-600 {
+  color: #ffffff !important;
+}
+
+/* Smooth background transitions */
+body {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Tactile Touch Animation & Galaxy Vibe Feedback */
+@keyframes cosmic-pulse {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(37, 99, 235, 0.25), 0 0 10px rgba(16, 185, 129, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(37, 99, 235, 0.45), 0 0 18px rgba(16, 185, 129, 0.35);
+  }
+}
+
+.galaxy-card-glow {
+  animation: cosmic-pulse 4s ease-in-out infinite;
+}
+
+/* Mobile & Tablet Tactile Touch Responsiveness */
+button, a, input, select, textarea {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+/* Responsive custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.4);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.6);
+}
+
+/* Live Celestial Wallpaper Camera Breathing Motion */
+@keyframes kenburns {
+  0% {
+    transform: scale(1.02) translate(0, 0);
+  }
+  50% {
+    transform: scale(1.06) translate(-0.8%, -0.8%);
+  }
+  100% {
+    transform: scale(1.03) translate(0.8%, 0);
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "KB MAX Live SMS Gateway",
+  "description": "High-performance Live SMS Relay and Gateway Portal with multi-partition routing, provider stream synchronization, and client access management.",
+  "requestFramePermissions": []
+}

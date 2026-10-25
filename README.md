@@ -1,11 +1,21 @@
-<div align="center">
+# KB MAX Live SMS Gateway
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+## Environment (`.env`)
+Copy `.env.example` to `.env`. **`ADMIN_PASSWORD` is required.** The admin username is fixed: `ITXKAMII`.
+All other values are optional (see comments in `.env.example`).
 
-  <h1>Built with AI Studio</h2>
+## Local development
+```
+npm install
+npm run dev        # NODE_ENV=development (Vite dev server)
+```
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## Deploy to the VPS (no build on the VPS)
+1. On your computer: `bash build-release.sh` -> creates `release.tar.gz`
+2. Upload it to the VPS, extract it into the app folder (the folder that contains `data/`)
+3. Create `.env` there (from `.env.example`)
+4. Run `bash vps-deploy.sh`
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
-
-</div>
+## Backups
+All data lives in the `data/` folder (`storage.json`, `messages.ndjson`, `fingerprints.tsv`, `.datakey`).
+Back up the whole folder. Keep `.datakey` (or your `DATA_KEY`) together with the backup, or client passwords can not be decrypted.
