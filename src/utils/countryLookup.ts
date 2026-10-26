@@ -488,14 +488,29 @@ export function formatPhoneAndCli(
 }
 
 export function formatDateTime(timestamp: number | string | Date): string {
+  if (!timestamp) return '';
+
+  if (typeof timestamp === 'string') {
+    const s = timestamp.trim();
+    // If it's already a full date/time string like "2026-10-26 14:30:25" or "2026-10-26 14:30"
+    if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}[\sT]+\d{1,2}:\d{1,2}(:\d{1,2})?$/.test(s)) {
+      return s.replace('T', ' ');
+    }
+    // If it's "DD-MM-YYYY HH:mm:ss"
+    const dmy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})[\sT]+(\d{1,2}:\d{1,2}(?::\d{1,2})?)$/);
+    if (dmy) {
+      return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')} ${dmy[4]}`;
+    }
+  }
+
   const d = new Date(timestamp);
   if (isNaN(d.getTime())) return String(timestamp);
 
-  const year = d.getUTCFullYear();
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  const hours = String(d.getUTCHours()).padStart(2, '0');
-  const mins = String(d.getUTCMinutes()).padStart(2, '0');
-  const secs = String(d.getUTCSeconds()).padStart(2, '0');
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const mins = String(d.getMinutes()).padStart(2, '0');
+  const secs = String(d.getSeconds()).padStart(2, '0');
   return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
 }

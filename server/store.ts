@@ -2454,6 +2454,8 @@ class Store {
     providerName?: string;
     ipAddress?: string;
     rawId?: string;
+    dateStr?: string;
+    forceInclude?: boolean;
   }): SmsMessage | null {
     // Sanitize string inputs to prevent injection, control characters, or oversized memory allocation
     const cleanMsg = sanitizeInputString(data.message, 4000);
@@ -2497,9 +2499,21 @@ class Store {
       providerId: data.providerId,
     });
 
-    if (this.seenFingerprints.has(fingerprint)) {
+    if (this.seenFingerprints.has(fingerprint) && !data.forceInclude) {
       // Message was already processed and delivered before. Silently ignore.
       return null;
+    }
+
+    // When forceInclude is true (e.g. historical / old SMS sync by admin),
+    // ensure we don't insert a duplicate if the message is already in this.messages
+    if (data.forceInclude) {
+      const alreadyInList = this.messages.some(m => 
+        (data.rawId && m.rawId && m.rawId === data.rawId) ||
+        (m.phone === phone && m.message === cleanMsg && Math.abs(m.timestamp - dataTs) < 3000)
+      );
+      if (alreadyInList) {
+        return null;
+      }
     }
 
     // 2. Secondary In-Memory Array Check (Phone + exact text within 60s duplicate)
@@ -2591,33 +2605,37 @@ class Store {
       message: cleanMsg,
       otp: otp,
       timestamp: dataTs,
+      dateStr: data.dateStr,
       partId: assignedPartId,
       partName: assignedPartName,
       part: assignedPart,
       providerId: data.providerId,
       providerName: data.providerName || 'Direct Gateway',
       ipAddress: data.ipAddress,
+      rawId: data.rawId,
       isNew: true,
       isClientBlocked: false,
     };
 
     msg.isClientBlocked = this.isMessageBlockedForClients(msg);
 
-    // Fast O(1) insert if newer than or equal to latest message, avoiding expensive full-array sorts
+    // Fast chronological insert (descending by timestamp: newest first)
     if (this.messages.length === 0 || msg.timestamp >= this.messages[0].timestamp) {
       this.messages.unshift(msg);
+    } else if (msg.timestamp <= this.messages[this.messages.length - 1].timestamp) {
+      this.messages.push(msg);
     } else {
-      let inserted = false;
-      for (let i = 0; i < Math.min(this.messages.length, 100); i++) {
-        if (msg.timestamp >= this.messages[i].timestamp) {
-          this.messages.splice(i, 0, msg);
-          inserted = true;
-          break;
+      let low = 0;
+      let high = this.messages.length - 1;
+      while (low <= high) {
+        const mid = (low + high) >>> 1;
+        if (this.messages[mid].timestamp > msg.timestamp) {
+          low = mid + 1;
+        } else {
+          high = mid - 1;
         }
       }
-      if (!inserted) {
-        this.messages.push(msg);
-      }
+      this.messages.splice(low, 0, msg);
     }
 
     // Retain full historical archive safely up to 100,000+ so records are never missing

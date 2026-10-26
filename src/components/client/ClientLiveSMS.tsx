@@ -794,7 +794,7 @@ export const ClientLiveSMS: React.FC = () => {
                 {paginatedMessages.map((msg) => {
                   const rangeName = msg.rangeName || resolveRangeName(msg.country, msg.phone, ranges);
                   const cliName = msg.cli || msg.service || msg.sender;
-                  const dateStr = formatDateTime(msg.timestamp);
+                  const dateStr = msg.dateStr || formatDateTime(msg.timestamp);
 
                   return (
                     <div
@@ -945,7 +945,7 @@ export const ClientLiveSMS: React.FC = () => {
                     paginatedMessages.map((msg) => {
                       const rangeName = msg.rangeName || resolveRangeName(msg.country, msg.phone, ranges);
                       const cliName = (msg.cli || msg.service || msg.sender || 'Direct').trim();
-                      const dateStr = formatDateTime(msg.timestamp);
+                      const dateStr = msg.dateStr || formatDateTime(msg.timestamp);
                       const relativeTime = getRelativeTime(msg.timestamp);
                       const extractedOtp = extractQuickOtp(msg.message);
                       const isRecent = Date.now() - msg.timestamp < 30000;

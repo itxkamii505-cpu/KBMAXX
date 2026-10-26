@@ -548,7 +548,7 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
       });
     } else {
       exportData = (displayItems as SmsMessage[]).map(m => ({
-        'Date': formatDateTime(m.timestamp),
+        'Date': m.dateStr || formatDateTime(m.timestamp),
         'Range': resolveRangeName(m.country, m.phone, ranges) || m.rangeName || 'Direct',
         'Number': m.phone,
         'CLI': m.cli || m.service || m.sender || 'Direct',
@@ -1323,7 +1323,7 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
                 ) : (
                   // Normal SMS Table Rows (Client column removed)
                   (paginatedItems as SmsMessage[]).map((msg) => {
-                    const dateStr = formatDateTime(msg.timestamp);
+                    const dateStr = msg.dateStr || formatDateTime(msg.timestamp);
                     const rangeName = resolveRangeName(msg.country, msg.phone, ranges) || msg.rangeName || 'Direct';
                     const cliName = (msg.cli || msg.service || msg.sender || 'Direct').trim();
 

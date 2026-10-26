@@ -142,7 +142,7 @@ class InMemoryRateLimiter {
 }
 
 const loginRateLimiter = new InMemoryRateLimiter(10, 5 * 60 * 1000);  // Max 10 attempts per 5 mins per IP
-const webhookRateLimiter = new InMemoryRateLimiter(180, 60 * 1000);   // Max 180 inbound webhook requests/min
+const webhookRateLimiter = new InMemoryRateLimiter(1200, 60 * 1000);  // High-capacity: Max 1200 inbound webhook requests/min
 const apiRateLimiter = new InMemoryRateLimiter(500, 60 * 1000);       // Max 500 API calls/min per IP
 
 function getClientIp(req: Request): string {
@@ -234,7 +234,22 @@ function isPrivateIp(ip: string): boolean {
   return false;
 }
 
-// Full SSRF validation: string rules + DNS resolution (blocks hostnames that point to private IPs)
+// In-memory DNS cache (5-minute TTL) to avoid redundant lookups on frequent poller cycles
+const dnsCache = new Map<string, { addresses: string[]; expiresAt: number }>();
+
+async function getCachedDnsAddresses(host: string): Promise<string[]> {
+  const now = Date.now();
+  const cached = dnsCache.get(host);
+  if (cached && cached.expiresAt > now) {
+    return cached.addresses;
+  }
+  const addrs = await dns.promises.lookup(host, { all: true });
+  const ipList = addrs.map(a => a.address);
+  dnsCache.set(host, { addresses: ipList, expiresAt: now + 5 * 60 * 1000 });
+  return ipList;
+}
+
+// Full SSRF validation: string rules + cached DNS resolution (blocks hostnames that point to private IPs)
 async function assertSafeOutboundUrl(urlStr: string): Promise<{ safe: boolean; reason?: string }> {
   const basic = isSafeOutboundUrl(urlStr);
   if (!basic.safe) return basic;
@@ -243,8 +258,8 @@ async function assertSafeOutboundUrl(urlStr: string): Promise<{ safe: boolean; r
     if (net.isIP(host)) {
       return isPrivateIp(host) ? { safe: false, reason: 'Private or reserved IP addresses are forbidden' } : { safe: true };
     }
-    const addrs = await dns.promises.lookup(host, { all: true });
-    if (addrs.some(a => isPrivateIp(a.address))) {
+    const addrs = await getCachedDnsAddresses(host);
+    if (addrs.some(addr => isPrivateIp(addr))) {
       return { safe: false, reason: 'Hostname resolves to a private or reserved address' };
     }
     return { safe: true };
@@ -699,21 +714,16 @@ app.post('/api/client-filters', requireAdmin, (req: AuthRequest, res: Response) 
   res.json({ success: true, rule: result.rule });
 });
 
-app.patch('/api/client-filters/:id', requireAdmin, (req: AuthRequest, res: Response) => {
+const handleUpdateClientFilter = (req: AuthRequest, res: Response) => {
   const result = store.updateClientFilterRule(req.params.id, req.body);
   if (result.error || !result.rule) {
     return res.status(400).json({ error: result.error || 'Failed to update filter rule' });
   }
   res.json({ success: true, rule: result.rule, rules: store.getClientFilterRules() });
-});
+};
 
-app.put('/api/client-filters/:id', requireAdmin, (req: AuthRequest, res: Response) => {
-  const result = store.updateClientFilterRule(req.params.id, req.body);
-  if (result.error || !result.rule) {
-    return res.status(400).json({ error: result.error || 'Failed to update filter rule' });
-  }
-  res.json({ success: true, rule: result.rule, rules: store.getClientFilterRules() });
-});
+app.patch('/api/client-filters/:id', requireAdmin, handleUpdateClientFilter);
+app.put('/api/client-filters/:id', requireAdmin, handleUpdateClientFilter);
 
 app.patch('/api/client-filters/:id/toggle', requireAdmin, (req: AuthRequest, res: Response) => {
   const success = store.toggleClientFilterRule(req.params.id);
@@ -940,12 +950,13 @@ app.post(['/api/webhook/sms', '/api/sms/inbound'], (req: Request, res: Response)
   if (!token) {
     return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Webhook authorization token is required' });
   }
+  let matchedProvider: any = undefined;
   const isMasterMatch = safeCompare(token, settings.webhookToken);
   if (!isMasterMatch) {
     // Check if token matches any API Provider webhookSecret
     const providers = store.getProviders();
-    const matched = providers.find(p => p.webhookSecret && safeCompare(p.webhookSecret, token));
-    if (!matched) {
+    matchedProvider = providers.find(p => p.webhookSecret && safeCompare(p.webhookSecret, token));
+    if (!matchedProvider) {
       return res.status(403).json({ error: 'INVALID_WEBHOOK_TOKEN', message: 'Webhook authorization token mismatch' });
     }
   }
@@ -977,8 +988,8 @@ app.post(['/api/webhook/sms', '/api/sms/inbound'], (req: Request, res: Response)
     const rawMsg = item.message || item.text || item.body || item.sms || item.msg || item.sms_text || item.content || item.msg_body || item.full_message || item.sms_content || '';
     const rawSender = item.cli || item.callerId || item.brand || item.sender || item.senderId || item.from || item.source || item.service || item.app || item.header || item.mask || 'VPS Inbound';
     const rawCountry = item.country || item.nation || item.rangs || item.range || item.country_name || undefined;
-    const rawDate = item.dt || item.timestamp || item.date || item.datetime || item.created_at || item.received_at || item.time || item.sent_time;
-    const parsedTime = rawDate ? (typeof rawDate === 'number' ? rawDate : new Date(rawDate).getTime()) : Date.now();
+    const rawDate = item.dt || item.timestamp || item.date || item.datetime || item.date_time || item.dateTime || item.created_at || item.received_at || item.time || item.sent_time || item.insert_date || item.sms_date;
+    const parsedDate = parseApiDateAndTimestamp(rawDate);
 
     const msg = store.addMessage({
       rawId: rawId ? String(rawId) : undefined,
@@ -989,10 +1000,13 @@ app.post(['/api/webhook/sms', '/api/sms/inbound'], (req: Request, res: Response)
       message: String(rawMsg),
       service: item.service || item.serviceName || item.app || undefined,
       otp: item.otp || item.code || undefined,
-      timestamp: isNaN(parsedTime) ? Date.now() : parsedTime,
-      partId: item.partId || item.part,
-      part: item.part,
-      providerName: 'VPS Inbound Webhook',
+      timestamp: parsedDate.timestamp,
+      dateStr: parsedDate.dateStr,
+      partId: matchedProvider ? (matchedProvider.partId || String(matchedProvider.part || '1')) : (item.partId || item.part),
+      partName: matchedProvider ? (matchedProvider.partName || `Part ${matchedProvider.part || 1}`) : undefined,
+      part: matchedProvider ? (matchedProvider.part || 1) : item.part,
+      providerId: matchedProvider ? matchedProvider.id : undefined,
+      providerName: matchedProvider ? matchedProvider.name : 'VPS Inbound Webhook',
       ipAddress: String(ip),
     });
 
@@ -1125,16 +1139,66 @@ async function runPool<T>(items: T[], concurrency: number, fn: (item: T) => Prom
   await Promise.all(workers);
 }
 
-// Helper to parse WhiteNoise date timestamps (e.g. "12-12-2025 09:16:14")
-function parseWhiteNoiseTime(timeStr?: string): number {
-  if (!timeStr) return Date.now();
-  const m = String(timeStr).match(/^(\d{2})[-/](\d{2})[-/](\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
-  if (m) {
-    const d = new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4]), Number(m[5]), Number(m[6])));
-    if (!isNaN(d.getTime())) return d.getTime();
+// Robust parser for API timestamps and date strings across various provider formats
+function parseApiDateAndTimestamp(rawDate: any): { timestamp: number; dateStr?: string } {
+  if (rawDate === null || rawDate === undefined || rawDate === '') {
+    return { timestamp: Date.now() };
   }
-  const d2 = new Date(timeStr);
-  return !isNaN(d2.getTime()) ? d2.getTime() : Date.now();
+
+  // 1. Numeric or numeric-string Unix timestamp (seconds or milliseconds)
+  if (typeof rawDate === 'number' || (typeof rawDate === 'string' && /^\d{10,13}$/.test(rawDate.trim()))) {
+    const num = typeof rawDate === 'number' ? rawDate : parseInt(rawDate.trim(), 10);
+    const ms = num < 1e11 ? num * 1000 : num;
+    const d = new Date(ms);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    return { timestamp: ms, dateStr };
+  }
+
+  const str = String(rawDate).trim();
+
+  // 2. YYYY-MM-DD or YYYY/MM/DD with optional time
+  const ymdMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (ymdMatch) {
+    const yyyy = ymdMatch[1];
+    const mm = ymdMatch[2].padStart(2, '0');
+    const dd = ymdMatch[3].padStart(2, '0');
+    const hh = (ymdMatch[4] || '00').padStart(2, '0');
+    const min = (ymdMatch[5] || '00').padStart(2, '0');
+    const ss = (ymdMatch[6] || '00').padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+    const parsed = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min), Number(ss)).getTime();
+    return { timestamp: isNaN(parsed) ? Date.now() : parsed, dateStr };
+  }
+
+  // 3. DD-MM-YYYY or DD/MM/YYYY with optional time
+  const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (dmyMatch) {
+    const dd = dmyMatch[1].padStart(2, '0');
+    const mm = dmyMatch[2].padStart(2, '0');
+    const yyyy = dmyMatch[3];
+    const hh = (dmyMatch[4] || '00').padStart(2, '0');
+    const min = (dmyMatch[5] || '00').padStart(2, '0');
+    const ss = (dmyMatch[6] || '00').padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+    const parsed = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min), Number(ss)).getTime();
+    return { timestamp: isNaN(parsed) ? Date.now() : parsed, dateStr };
+  }
+
+  // 4. Fallback to standard Date parsing (e.g. ISO 8601, RFC2822)
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    return { timestamp: d.getTime(), dateStr };
+  }
+
+  return { timestamp: Date.now(), dateStr: str };
+}
+
+// Helper to parse WhiteNoise date timestamps (e.g. "12-12-2025 09:16:14")
+function parseWhiteNoiseTime(timeStr?: string): { timestamp: number; dateStr?: string } {
+  return parseApiDateAndTimestamp(timeStr);
 }
 
 // Helper to resolve WhiteNoise API Key and check client permission
@@ -1252,22 +1316,33 @@ app.all('/api/whitenoise/last-sms', requireAuth, async (req: AuthRequest, res: R
     if (data && Array.isArray(data.sms)) {
       data.sms = data.sms.map((item: any) => {
         const otpCode = extractOtp(item.text);
-        const parsedTs = parseWhiteNoiseTime(item.time);
+        const parsedDate = parseWhiteNoiseTime(item.time);
+
+        // Dynamically resolve target partition from configured provider if present
+        const providers = store.getProviders();
+        const wnProvider = providers.find(p => p.enabled && p.apiUrl && p.apiUrl.includes('whitenoise'));
+        const assignedPartId = wnProvider?.partId || '2';
+        const assignedPartName = wnProvider?.partName || 'Part 2';
+        const assignedPart = wnProvider?.part || (assignedPartId === '2' ? 2 : 1);
+        const assignedProviderName = wnProvider?.name || 'WhiteNoise (API-2)';
+        const assignedProviderId = wnProvider?.id;
 
         // Auto-save permanently into system message store
         store.addMessage({
           rawId: item.id ? String(item.id) : undefined,
           phone: item.dst || phone,
-          sender: item.src || item.service_name || 'WhiteNoise',
-          cli: item.src || item.service_name || 'WhiteNoise',
-          service: item.service_name || item.src || 'WhiteNoise',
+          sender: item.src || item.service_name || assignedProviderName,
+          cli: item.src || item.service_name || assignedProviderName,
+          service: item.service_name || item.src || assignedProviderName,
           message: item.text || '',
           otp: otpCode,
-          timestamp: parsedTs,
-          part: 2,
-          partName: 'Part 2',
-          partId: '2',
-          providerName: 'WhiteNoise (API-2)',
+          timestamp: parsedDate.timestamp,
+          dateStr: parsedDate.dateStr,
+          part: assignedPart,
+          partName: assignedPartName,
+          partId: assignedPartId,
+          providerId: assignedProviderId,
+          providerName: assignedProviderName,
         });
 
         return {
@@ -1439,6 +1514,21 @@ app.post('/api/whitenoise/admin-config', requireAdmin, (req: AuthRequest, res: R
 // Authenticated users (admin + client) can read configured ranges to resolve range names
 app.get('/api/ranges', requireAuth, (_req: AuthRequest, res: Response) => {
   const ranges = store.getRanges();
+  res.json({ ranges });
+});
+
+// Lightweight Range Metadata Endpoint (Zero numbers array overhead for fast dropdowns & dashboard)
+app.get('/api/ranges/meta', requireAuth, (_req: AuthRequest, res: Response) => {
+  const ranges = store.getRanges().map(r => ({
+    id: r.id,
+    name: r.name,
+    prefix: r.prefix,
+    countryNote: r.countryNote,
+    totalNumbers: r.totalNumbers || (r.numbers ? r.numbers.length : 0),
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    allowedBlockedClis: r.allowedBlockedClis || [],
+  }));
   res.json({ ranges });
 });
 
@@ -1682,7 +1772,7 @@ app.delete('/api/providers/:id', requireAdmin, (req: AuthRequest, res: Response)
   res.json({ success: true });
 });
 
-// Manual Sync Provider API
+// Manual Sync Provider API (Supports custom date & time historical sync)
 app.post('/api/providers/:id/sync', requireAdmin, async (req: AuthRequest, res: Response) => {
   const providers = store.getProviders();
   const provider = providers.find(p => p.id === req.params.id);
@@ -1690,7 +1780,12 @@ app.post('/api/providers/:id/sync', requireAdmin, async (req: AuthRequest, res: 
     return res.status(404).json({ error: 'Provider not found' });
   }
 
-  const syncResult = await syncProvider(provider);
+  const { fromTime, toTime } = req.body || {};
+  const syncResult = await syncProvider(provider, {
+    fromTime,
+    toTime,
+    forceInclude: Boolean(fromTime || req.body?.forceInclude),
+  });
   res.json(syncResult);
 });
 
@@ -1841,7 +1936,7 @@ app.post('/api/providers/preview', requireAdmin, async (req: AuthRequest, res: R
       data = text;
     }
 
-    let insertedCount = 0;
+    const previewItems: any[] = [];
     const items = extractSmsItems(data);
 
     const mapping = fieldMapping || {};
@@ -1853,7 +1948,7 @@ app.post('/api/providers/preview', requireAdmin, async (req: AuthRequest, res: R
     const timeField = mapping.timestampField;
 
     if (items.length > 0) {
-      for (const item of items) {
+      for (const item of items.slice(0, 10)) {
         if (!item) continue;
         const rawId = item.id || item.msg_id || item.sms_id || item.message_id || item.record_id || item.uid || item.smsid;
         const rawPhone = String(
@@ -1880,25 +1975,21 @@ app.post('/api/providers/preview', requireAdmin, async (req: AuthRequest, res: R
         ).trim();
 
         const rawOtp = String((otpField && item[otpField]) || item.otp || item.code || item.verification_code || '').trim();
-        const rawDate = (timeField && item[timeField]) || item.dt || item.timestamp || item.date || item.datetime || item.created_at || item.received_at || item.time || item.sent_time;
-        const parsedTimestamp = rawDate ? (typeof rawDate === 'number' ? (rawDate < 1e11 ? rawDate * 1000 : rawDate) : new Date(rawDate).getTime()) : Date.now();
+        const rawDate = (timeField && item[timeField]) || item.dt || item.timestamp || item.date || item.datetime || item.date_time || item.dateTime || item.created_at || item.received_at || item.time || item.sent_time || item.insert_date || item.sms_date;
+        const parsedDate = parseApiDateAndTimestamp(rawDate);
 
         if (rawPhone || rawMsg) {
-          const added = store.addMessage({
+          previewItems.push({
             rawId: rawId ? String(rawId) : undefined,
             phone: rawPhone,
             sender: String(rawSender || rawCli || 'Gateway API'),
-            country: item.country || item.nation || item.rangs || item.range || undefined,
             cli: rawCli,
             message: String(rawMsg),
             service: (serviceField && item[serviceField]) || item.service || item.app || rawSender || rawCli || 'Gateway API',
             otp: rawOtp || undefined,
-            timestamp: isNaN(parsedTimestamp) ? Date.now() : parsedTimestamp,
-            partId: req.body.partId,
-            part: req.body.part,
-            providerName: 'Live Gateway Preview',
+            timestamp: parsedDate.timestamp,
+            dateStr: parsedDate.dateStr,
           });
-          if (added) insertedCount++;
         }
       }
     }
@@ -1908,7 +1999,7 @@ app.post('/api/providers/preview', requireAdmin, async (req: AuthRequest, res: R
       status: response.status,
       finalUrl,
       response: data,
-      insertedCount,
+      previewItems,
       totalItemsFound: items.length,
     });
   } catch (err: any) {
@@ -1920,11 +2011,23 @@ app.post('/api/providers/preview', requireAdmin, async (req: AuthRequest, res: R
   }
 });
 
-// In-Flight sync tracking to prevent overlapping fetches per provider
 const inFlightSyncs = new Set<string>();
+const lastGatewayFallbackFetch = new Map<string, number>();
+
+function formatCustomDateParam(input?: string): string {
+  if (!input) return '';
+  let str = input.trim().replace('T', ' ');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return `${str} 00:00:00`;
+  }
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(str)) {
+    return `${str}:00`;
+  }
+  return str;
+}
 
 // High-throughput, ultra-fast Provider Sync Engine
-async function syncProvider(provider: any) {
+async function syncProvider(provider: any, options?: { fromTime?: string; toTime?: string; forceInclude?: boolean }) {
   if (!provider || !provider.enabled) {
     return { success: false, error: 'Provider is disabled' };
   }
@@ -1935,6 +2038,9 @@ async function syncProvider(provider: any) {
 
   inFlightSyncs.add(provider.id);
   let newCount = 0;
+  const isHistoricalSync = Boolean(options?.fromTime && options.fromTime.trim() !== '');
+  const customFromTime = isHistoricalSync ? formatCustomDateParam(options!.fromTime) : '';
+  const customToTime = options?.toTime ? formatCustomDateParam(options.toTime) : '';
 
   try {
     if (provider.apiUrl && provider.apiUrl.startsWith('http')) {
@@ -1991,11 +2097,19 @@ async function syncProvider(provider: any) {
           };
         }
 
+        let wnSinceSeconds = 300;
+        if (isHistoricalSync) {
+          const fromParsed = new Date(customFromTime.replace(' ', 'T')).getTime();
+          if (!isNaN(fromParsed) && fromParsed < Date.now()) {
+            wnSinceSeconds = Math.max(60, Math.floor((Date.now() - fromParsed) / 1000));
+          }
+        }
+
         await runPool(Array.from(targetPhones), 8, async (targetPhone) => {
-          const smsList = await fetchWhiteNoiseSms(apiKey, targetPhone, provider.params?.service_name, 300);
+          const smsList = await fetchWhiteNoiseSms(apiKey, targetPhone, provider.params?.service_name, wnSinceSeconds);
           for (const item of smsList) {
             if (!item || !item.text) continue;
-            const parsedTs = parseWhiteNoiseTime(item.time);
+            const parsedDate = parseWhiteNoiseTime(item.time);
             const added = store.addMessage({
               rawId: item.id ? String(item.id) : undefined,
               phone: item.dst || targetPhone,
@@ -2004,12 +2118,14 @@ async function syncProvider(provider: any) {
               service: item.service_name || item.src || 'WhiteNoise',
               message: item.text,
               otp: extractOtp(item.text),
-              timestamp: parsedTs,
+              timestamp: parsedDate.timestamp,
+              dateStr: parsedDate.dateStr,
               partId: provider.partId || '2',
               partName: provider.partName || 'Part 2',
               part: provider.part || 2,
               providerId: provider.id,
               providerName: provider.name,
+              forceInclude: isHistoricalSync || Boolean(options?.forceInclude),
             });
             if (added) newCount++;
           }
@@ -2025,7 +2141,9 @@ async function syncProvider(provider: any) {
         return {
           success: true,
           newCount,
-          message: `Connected to WhiteNoise API! Synced ${newCount} new SMS across ${targetPhones.size} target numbers.`
+          message: isHistoricalSync
+            ? `WhiteNoise historical sync completed! Imported ${newCount} SMS from ${customFromTime} into Live Feed & Reports.`
+            : `Connected to WhiteNoise API! Synced ${newCount} new SMS across ${targetPhones.size} target numbers.`
         };
       }
 
@@ -2042,22 +2160,40 @@ async function syncProvider(provider: any) {
         }
       }
 
-      // Date parameter check: only if explicitly provided
-      const hasExplicitDateParam = Boolean(provider.dt1Param && provider.dt1Param.trim() !== '');
-      if (hasExplicitDateParam) {
-        const now = new Date();
-        const yyyy = now.getFullYear();
-        const mm = String(now.getMonth() + 1).padStart(2, '0');
-        const dd = String(now.getDate()).padStart(2, '0');
-        const localToday = `${yyyy}-${mm}-${dd}`;
-        url.searchParams.set(provider.dt1Param, `${localToday} 00:00:00`);
-        if (provider.dt2Param && provider.dt2Param.trim() !== '') {
-          url.searchParams.set(provider.dt2Param, `${localToday} 23:59:59`);
+      // Date parameter check: custom historical time or default today
+      if (isHistoricalSync) {
+        const dt1Key = (provider.dt1Param && provider.dt1Param.trim() !== '') ? provider.dt1Param.trim() : 'dt1';
+        url.searchParams.set(dt1Key, customFromTime);
+        const dt2Key = (provider.dt2Param && provider.dt2Param.trim() !== '') ? provider.dt2Param.trim() : 'dt2';
+        if (customToTime) {
+          url.searchParams.set(dt2Key, customToTime);
+        } else {
+          const now = new Date();
+          const yyyy = now.getFullYear();
+          const mm = String(now.getMonth() + 1).padStart(2, '0');
+          const dd = String(now.getDate()).padStart(2, '0');
+          url.searchParams.set(dt2Key, `${yyyy}-${mm}-${dd} 23:59:59`);
+        }
+      } else {
+        const hasExplicitDateParam = Boolean(provider.dt1Param && provider.dt1Param.trim() !== '');
+        if (hasExplicitDateParam) {
+          const now = new Date();
+          const yyyy = now.getFullYear();
+          const mm = String(now.getMonth() + 1).padStart(2, '0');
+          const dd = String(now.getDate()).padStart(2, '0');
+          const localToday = `${yyyy}-${mm}-${dd}`;
+          url.searchParams.set(provider.dt1Param, `${localToday} 00:00:00`);
+          if (provider.dt2Param && provider.dt2Param.trim() !== '') {
+            url.searchParams.set(provider.dt2Param, `${localToday} 23:59:59`);
+          }
         }
       }
 
-      if (provider.maxRecords && provider.recordsParam) {
-        url.searchParams.set(provider.recordsParam, String(provider.maxRecords));
+      if (isHistoricalSync && provider.recordsParam && provider.recordsParam.trim() !== '') {
+        const recKey = provider.recordsParam.trim();
+        url.searchParams.set(recKey, String(Math.max(provider.maxRecords || 1000, 3000)));
+      } else if (provider.maxRecords && provider.recordsParam && provider.recordsParam.trim() !== '') {
+        url.searchParams.set(provider.recordsParam.trim(), String(provider.maxRecords));
       }
 
       const fetchItemsFromUrl = async (fetchUrl: string): Promise<any[]> => {
@@ -2093,9 +2229,12 @@ async function syncProvider(provider: any) {
 
       let items = await fetchItemsFromUrl(url.toString());
 
-      // If date filtering returned 0 items, fallback to fetching without date constraints
-      // This guarantees that if messages exist in the main panel, they are NEVER blocked
-      if (items.length === 0 && hasExplicitDateParam) {
+      // If date filtering returned 0 items, safely fallback to fetching without date constraints (throttled to at most once per 45s)
+      // This prevents high-frequency polling from hammering the upstream gateway with unconstrained queries every second
+      const nowTs = Date.now();
+      const lastFallback = lastGatewayFallbackFetch.get(provider.id) || 0;
+      if (items.length === 0 && !isHistoricalSync && Boolean(provider.dt1Param && provider.dt1Param.trim() !== '') && (nowTs - lastFallback > 45000)) {
+        lastGatewayFallbackFetch.set(provider.id, nowTs);
         const fallbackUrl = new URL(provider.apiUrl);
         if (provider.apiToken) {
           fallbackUrl.searchParams.set(provider.tokenParam || 'token', provider.apiToken);
@@ -2107,8 +2246,8 @@ async function syncProvider(provider: any) {
             }
           }
         }
-        if (provider.maxRecords && provider.recordsParam) {
-          fallbackUrl.searchParams.set(provider.recordsParam, String(provider.maxRecords));
+        if (provider.maxRecords && provider.recordsParam && provider.recordsParam.trim() !== '') {
+          fallbackUrl.searchParams.set(provider.recordsParam.trim(), String(provider.maxRecords));
         }
         const fallbackItems = await fetchItemsFromUrl(fallbackUrl.toString());
         if (fallbackItems.length > 0) {
@@ -2155,16 +2294,8 @@ async function syncProvider(provider: any) {
 
           const rawOtp = String((otpField && item[otpField]) || item.otp || item.code || item.verification_code || '').trim();
           const rawCountry = item.country || item.nation || item.rangs || item.range || item.country_name || undefined;
-          const rawDate = (timeField && item[timeField]) || item.dt || item.timestamp || item.date || item.datetime || item.created_at || item.received_at || item.time || item.sent_time;
-          let parsedTimestamp = Date.now();
-          if (rawDate) {
-            if (typeof rawDate === 'number') {
-              parsedTimestamp = rawDate < 1e11 ? rawDate * 1000 : rawDate;
-            } else {
-              const parsed = new Date(rawDate).getTime();
-              if (!isNaN(parsed)) parsedTimestamp = parsed;
-            }
-          }
+          const rawDate = (timeField && item[timeField]) || item.dt || item.timestamp || item.date || item.datetime || item.date_time || item.dateTime || item.created_at || item.received_at || item.time || item.sent_time || item.insert_date || item.sms_date;
+          const parsedDate = parseApiDateAndTimestamp(rawDate);
 
           if (rawPhone || rawMsg) {
             const added = store.addMessage({
@@ -2176,12 +2307,14 @@ async function syncProvider(provider: any) {
               message: String(rawMsg),
               service: (serviceField && item[serviceField]) || item.service || item.app || rawSender || rawCli || provider.name,
               otp: rawOtp || undefined,
-              timestamp: isNaN(parsedTimestamp) ? Date.now() : parsedTimestamp,
+              timestamp: parsedDate.timestamp,
+              dateStr: parsedDate.dateStr,
               partId: provider.partId,
               partName: provider.partName,
               part: provider.part,
               providerId: provider.id,
               providerName: provider.name,
+              forceInclude: isHistoricalSync || Boolean(options?.forceInclude),
             });
             if (added) {
               newCount++;
@@ -2197,7 +2330,11 @@ async function syncProvider(provider: any) {
       lastSyncError: undefined,
     });
 
-    return { success: true, newCount, message: `Sync completed for ${provider.name} (${newCount} new)` };
+    const resultMessage = isHistoricalSync
+      ? `Historical sync completed for ${provider.name}! Imported ${newCount} older SMS from ${customFromTime} into Live Feed & Reports.`
+      : `Sync completed for ${provider.name} (${newCount} new)`;
+
+    return { success: true, newCount, message: resultMessage };
   } catch (err: any) {
     store.updateProvider(provider.id, {
       lastSyncStatus: 'failed',
@@ -2301,25 +2438,34 @@ async function syncWhiteNoiseAutoPoller() {
     }
 
     // 2. Fetch SMS for all registered target numbers (8 at a time, 8s timeout each)
+    const wnProvider = providers.find(p => p.enabled && p.apiUrl && p.apiUrl.includes('whitenoise'));
+    const assignedPartId = wnProvider?.partId || '2';
+    const assignedPartName = wnProvider?.partName || 'Part 2';
+    const assignedPart = wnProvider?.part || (assignedPartId === '2' ? 2 : 1);
+    const assignedProviderName = wnProvider?.name || 'WhiteNoise (API-2)';
+    const assignedProviderId = wnProvider?.id;
+
     await runPool(Array.from(targetMap.values()), 8, async (target) => {
       const smsList = await fetchWhiteNoiseSms(target.apiKey, target.phone, target.serviceName, 300);
       let hasNewMessage = false;
       for (const item of smsList) {
         if (!item || !item.text) continue;
-        const parsedTs = parseWhiteNoiseTime(item.time);
+        const parsedDate = parseWhiteNoiseTime(item.time);
         const added = store.addMessage({
           rawId: item.id ? String(item.id) : undefined,
           phone: item.dst || target.phone,
-          sender: item.src || item.service_name || 'WhiteNoise',
-          cli: item.src || item.service_name || 'WhiteNoise',
-          service: item.service_name || item.src || 'WhiteNoise',
+          sender: item.src || item.service_name || assignedProviderName,
+          cli: item.src || item.service_name || assignedProviderName,
+          service: item.service_name || item.src || assignedProviderName,
           message: item.text,
           otp: extractOtp(item.text),
-          timestamp: parsedTs,
-          part: 2,
-          partName: 'Part 2',
-          partId: '2',
-          providerName: 'WhiteNoise (API-2)',
+          timestamp: parsedDate.timestamp,
+          dateStr: parsedDate.dateStr,
+          part: assignedPart,
+          partName: assignedPartName,
+          partId: assignedPartId,
+          providerId: assignedProviderId,
+          providerName: assignedProviderName,
         });
         if (added) hasNewMessage = true;
       }
@@ -2327,6 +2473,14 @@ async function syncWhiteNoiseAutoPoller() {
         store.recordWhiteNoiseNumberSync(target.phone);
       }
     });
+
+    if (wnProvider) {
+      store.updateProvider(wnProvider.id, {
+        lastSyncStatus: 'success',
+        lastSyncTime: Date.now(),
+        lastSyncError: undefined,
+      });
+    }
   } catch (err: any) {
     // Continue
   } finally {
@@ -2342,10 +2496,14 @@ const runBackgroundPoller = async () => {
     const activeProviders = providers.filter(p => p && p.enabled && p.autoSync);
     
     if (activeProviders.length > 0) {
-      // Execute all provider syncs in parallel without blocking each other
+      // Execute all non-WhiteNoise provider syncs in parallel
+      // Note: WhiteNoise targets are unified and polled by syncWhiteNoiseAutoPoller to prevent double polling
       await Promise.allSettled(
         activeProviders.map(async (provider) => {
           try {
+            if (provider.apiUrl && provider.apiUrl.includes('whitenoise')) {
+              return;
+            }
             const minInterval = Math.max(1000, (provider.syncIntervalSec || 1) * 1000);
             const lastSync = provider.lastSyncTime || 0;
             if (Date.now() - lastSync >= minInterval) {

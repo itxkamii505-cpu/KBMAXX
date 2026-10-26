@@ -159,7 +159,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       const [statsRes, partsRes, rangesRes] = await Promise.all([
         fetch('/api/stats', { headers: { Authorization: `Bearer ${session.token}` } }),
         fetch('/api/partitions', { headers: { Authorization: `Bearer ${session.token}` } }),
-        needRanges ? fetch('/api/ranges', { headers: { Authorization: `Bearer ${session.token}` } }) : Promise.resolve(null),
+        needRanges ? fetch('/api/ranges/meta', { headers: { Authorization: `Bearer ${session.token}` } }) : Promise.resolve(null),
       ]);
 
       if (statsRes.ok) {

@@ -153,12 +153,14 @@ export interface SmsMessage {
   message: string;
   otp?: string;
   timestamp: number;
+  dateStr?: string;
   partId?: string;
   partName?: string;
   part?: 1 | 2 | string | number;
   providerId?: string;
   providerName?: string;
   ipAddress?: string;
+  rawId?: string;
   isNew?: boolean;
   isClientBlocked?: boolean;
 }

@@ -21,7 +21,9 @@ import {
   ArrowLeft,
   SlidersHorizontal,
   CheckCircle2,
-  FolderPlus
+  FolderPlus,
+  History,
+  Calendar
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { THEMES } from '../../utils/theme';
@@ -57,6 +59,13 @@ export const ApiProvidersView: React.FC = () => {
   const [isCreatingPartition, setIsCreatingPartition] = useState(false);
   const [editingPartitionId, setEditingPartitionId] = useState<string | null>(null);
   const [editingPartitionName, setEditingPartitionName] = useState('');
+
+  // Time-based Historical Sync Modal State
+  const [timeSyncProvider, setTimeSyncProvider] = useState<ApiProvider | null>(null);
+  const [timeSyncFrom, setTimeSyncFrom] = useState<string>('');
+  const [timeSyncTo, setTimeSyncTo] = useState<string>('');
+  const [isTimeSyncing, setIsTimeSyncing] = useState<boolean>(false);
+  const [timeSyncFeedback, setTimeSyncFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
   // Preview Console State
   const [isPreviewing, setIsPreviewing] = useState(false);
@@ -217,16 +226,17 @@ export const ApiProvidersView: React.FC = () => {
       });
 
       const data = await res.json();
+      const itemCount = data.totalItemsFound || (data.previewItems ? data.previewItems.length : 0);
       setPreviewResult({
         finalUrl: data.finalUrl || formData.apiUrl,
         response: data.response || data,
-        insertedCount: data.insertedCount || 0,
+        insertedCount: itemCount,
         success: data.success,
         error: data.error,
       });
 
-      if (data.insertedCount && data.insertedCount > 0) {
-        showToast(`Preview loaded! ${data.insertedCount} live numbers ingested into ${formData.partName || 'selected partition'}.`, 'success');
+      if (itemCount > 0) {
+        showToast(`Preview connected! Found ${itemCount} items from gateway API for inspection.`, 'success');
       } else if (data.success) {
         showToast(`Connected to gateway in ${formData.partName || 'selected partition'} successfully.`, 'success');
       } else {
@@ -362,6 +372,72 @@ export const ApiProvidersView: React.FC = () => {
       });
     } finally {
       setSyncingId(null);
+    }
+  };
+
+  const openTimeSyncModal = (p: ApiProvider) => {
+    setTimeSyncProvider(p);
+    setTimeSyncFeedback(null);
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    setTimeSyncFrom(`${yyyy}-${mm}-${dd} 00:00:00`);
+    setTimeSyncTo(`${yyyy}-${mm}-${dd} 23:59:59`);
+  };
+
+  const setTimePreset = (daysBack: number) => {
+    const now = new Date();
+    const target = new Date(now.getTime() - daysBack * 86400000);
+    const yyyy = target.getFullYear();
+    const mm = String(target.getMonth() + 1).padStart(2, '0');
+    const dd = String(target.getDate()).padStart(2, '0');
+    setTimeSyncFrom(`${yyyy}-${mm}-${dd} 00:00:00`);
+
+    const nowY = now.getFullYear();
+    const nowM = String(now.getMonth() + 1).padStart(2, '0');
+    const nowD = String(now.getDate()).padStart(2, '0');
+    setTimeSyncTo(`${nowY}-${nowM}-${nowD} 23:59:59`);
+  };
+
+  const handleExecuteTimeSync = async () => {
+    if (!session || !timeSyncProvider) return;
+    if (!timeSyncFrom.trim()) {
+      showToast('Please enter or select a valid Start Date & Time.', 'error');
+      return;
+    }
+    setIsTimeSyncing(true);
+    setTimeSyncFeedback(null);
+
+    try {
+      const res = await fetch(`/api/providers/${timeSyncProvider.id}/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({
+          fromTime: timeSyncFrom.trim(),
+          toTime: timeSyncTo.trim() || undefined,
+          forceInclude: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const msg = data.message || `Successfully synced ${data.newCount || 0} historical SMS into Live Feed & Reports!`;
+        setTimeSyncFeedback({ success: true, message: msg });
+        showToast(msg, 'success');
+        fetchProviders();
+      } else {
+        const errMsg = data.error || data.message || 'Failed to sync with specified time.';
+        setTimeSyncFeedback({ success: false, message: errMsg });
+        showToast(errMsg, 'error');
+      }
+    } catch (err: any) {
+      setTimeSyncFeedback({ success: false, message: err.message || 'Network sync error' });
+      showToast('Network error during historical sync.', 'error');
+    } finally {
+      setIsTimeSyncing(false);
     }
   };
 
@@ -918,6 +994,16 @@ print(response.json())`;
 
                       <button
                         type="button"
+                        onClick={() => openTimeSyncModal(p)}
+                        className="px-2.5 py-1.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-xs font-semibold text-indigo-300 flex items-center gap-1.5 transition-all cursor-pointer"
+                        title="Sync older SMS by entering date/time (Purani SMS live report mn layein)"
+                      >
+                        <History className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Sync with Time</span>
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => handleTestConnection(p.id)}
                         disabled={testingId === p.id}
                         className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition-all cursor-pointer"
@@ -1070,35 +1156,35 @@ print(response.json())`;
         )}
       </AnimatePresence>
 
-      {/* Add / Edit Gateway API Provider Modal with Interactive Dynamic Partition Flow */}
+      {/* Add / Edit Gateway API Provider Modal (Clean White Theme) */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 15 }}
-              className="w-full max-w-2xl bg-[#0b1120] border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto"
+              className="w-full max-w-2xl bg-white border border-slate-200 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto text-slate-800"
             >
               {/* STEP 1: SELECT DYNAMIC PARTITION */}
               {modalStep === 'select-part' ? (
                 <div className="space-y-6 py-2">
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-4">
                     <div>
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-blue-400 font-mono">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600 font-mono">
                         Step 1 of 2
                       </span>
-                      <h3 className="text-base sm:text-lg font-bold text-white tracking-tight mt-0.5">
+                      <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight mt-0.5">
                         Select Gateway Stream Partition
                       </h3>
-                      <p className="text-xs text-slate-400 mt-1">
+                      <p className="text-xs text-slate-500 mt-1">
                         Choose which partition to route incoming SMS from this Gateway API into.
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setIsModalOpen(false)}
-                      className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition-colors"
+                      className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -1125,38 +1211,38 @@ print(response.json())`;
                           }}
                           className={`text-left p-5 rounded-2xl border-2 transition-all group cursor-pointer flex flex-col justify-between gap-4 ${
                             isAmber
-                              ? 'bg-gradient-to-b from-amber-950/30 to-slate-900/90 border-amber-500/30 hover:border-amber-400 hover:shadow-xl hover:shadow-amber-500/10'
+                              ? 'bg-amber-50/70 border-amber-300 hover:border-amber-500 hover:bg-amber-100/40 hover:shadow-lg hover:shadow-amber-100'
                               : isPurple
-                              ? 'bg-gradient-to-b from-purple-950/30 to-slate-900/90 border-purple-500/30 hover:border-purple-400 hover:shadow-xl hover:shadow-purple-500/10'
-                              : 'bg-gradient-to-b from-indigo-950/30 to-slate-900/90 border-indigo-500/30 hover:border-indigo-400 hover:shadow-xl hover:shadow-indigo-500/10'
+                              ? 'bg-purple-50/70 border-purple-300 hover:border-purple-500 hover:bg-purple-100/40 hover:shadow-lg hover:shadow-purple-100'
+                              : 'bg-indigo-50/70 border-indigo-300 hover:border-indigo-500 hover:bg-indigo-100/40 hover:shadow-lg hover:shadow-indigo-100'
                           }`}
                         >
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
                               <span className={`px-2.5 py-1 rounded-full text-xs font-bold border font-mono ${
                                 isAmber
-                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                  ? 'bg-amber-100 text-amber-900 border-amber-300'
                                   : isPurple
-                                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
-                                  : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                                  ? 'bg-purple-100 text-purple-900 border-purple-300'
+                                  : 'bg-indigo-100 text-indigo-900 border-indigo-300'
                               }`}>
                                 {part.name}
                               </span>
-                              <span className="text-xs text-slate-400 font-mono">
+                              <span className="text-xs text-slate-500 font-mono">
                                 {count} Active API{count === 1 ? '' : 's'}
                               </span>
                             </div>
                             <div className="space-y-1">
-                              <h4 className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">
+                              <h4 className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
                                 {part.name} Gateway Stream
                               </h4>
-                              <p className="text-xs text-slate-400 leading-relaxed">
+                              <p className="text-xs text-slate-600 leading-relaxed">
                                 Incoming SMS will stream live into <strong>{part.name}</strong>. Messages are strictly isolated and filterable.
                               </p>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-400 pt-2 border-t border-slate-800">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 pt-2 border-t border-slate-200">
                             <span>Select {part.name}</span>
                             <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                           </div>
@@ -1166,28 +1252,28 @@ print(response.json())`;
                   </div>
                 </div>
               ) : (
-                /* STEP 2: CONFIGURATION & LIVE PREVIEW */
+                /* STEP 2: CONFIGURATION & LIVE PREVIEW (WHITE THEME) */
                 <>
                   {/* Modal Header */}
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-4">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         {!editingProvider && (
                           <button
                             type="button"
                             onClick={() => setModalStep('select-part')}
-                            className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                            className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
                             title="Back to partition selection"
                           >
                             <ArrowLeft className="w-4 h-4" />
                           </button>
                         )}
-                        <h3 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                          <Server className="w-5 h-5 text-blue-400" />
+                        <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                          <Server className="w-5 h-5 text-blue-600" />
                           <span>{editingProvider ? 'Edit Gateway API Provider' : 'Configure Gateway API Provider'}</span>
                         </h3>
                       </div>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-500">
                         Configure AstraSMS endpoint and test incoming records with Live Preview.
                       </p>
                     </div>
@@ -1196,7 +1282,7 @@ print(response.json())`;
                       <button
                         type="button"
                         onClick={() => setIsModalOpen(false)}
-                        className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition-colors"
+                        className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
                       >
                         <X className="w-5 h-5" />
                       </button>
@@ -1204,10 +1290,10 @@ print(response.json())`;
                   </div>
 
                   {/* Active Partition Selector Banner */}
-                  <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-slate-700">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400 font-semibold">Target Partition:</span>
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-indigo-950/80 text-indigo-300 border border-indigo-500/40">
+                      <span className="text-xs text-slate-600 font-semibold">Target Partition:</span>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-indigo-100 text-indigo-800 border border-indigo-200">
                         {formData.partName || 'Selected Partition'}
                       </span>
                     </div>
@@ -1223,10 +1309,10 @@ print(response.json())`;
                             partName: p.name,
                             part: p.id === 'part_2' ? 2 : 1,
                           }))}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                             formData.partId === p.id
                               ? 'bg-indigo-600 text-white shadow-sm'
-                              : 'bg-slate-900 text-slate-400 hover:text-white'
+                              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                           }`}
                         >
                           {p.name}
@@ -1237,8 +1323,8 @@ print(response.json())`;
 
                   {/* Duplicate / Validation Error Alert */}
                   {formError && (
-                    <div className="p-3.5 rounded-2xl bg-rose-950/60 border border-rose-500/40 text-rose-200 text-xs flex items-center gap-2.5">
-                      <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+                    <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-rose-700 text-xs flex items-center gap-2.5">
+                      <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0" />
                       <span>{formError}</span>
                     </div>
                   )}
@@ -1247,7 +1333,7 @@ print(response.json())`;
                   <form onSubmit={handleSubmit} className="space-y-4 text-xs font-sans">
                     {/* 1. Gateway Name / Label */}
                     <div>
-                      <label className="block font-semibold text-slate-300 mb-1 text-[11px]">
+                      <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
                         Gateway Name / Label
                       </label>
                       <input
@@ -1256,13 +1342,13 @@ print(response.json())`;
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                         placeholder="e.g. AstraSMS High Speed"
-                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-sans text-xs"
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 font-sans text-xs"
                       />
                     </div>
 
                     {/* 2. Base API URL */}
                     <div>
-                      <label className="block font-semibold text-slate-300 mb-1 text-[11px]">
+                      <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
                         Base API URL
                       </label>
                       <input
@@ -1271,13 +1357,13 @@ print(response.json())`;
                         value={formData.apiUrl}
                         onChange={(e) => setFormData({ ...formData, apiUrl: e.target.value })}
                         placeholder="https://astrasms.com/api/viewstats"
-                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-xs"
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 font-mono text-xs"
                       />
                     </div>
 
                     {/* 3. Secret API Token */}
                     <div>
-                      <label className="block font-semibold text-slate-300 mb-1 text-[11px]">
+                      <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
                         Secret API Token (e.g. AstraSMS Token)
                       </label>
                       <input
@@ -1285,14 +1371,14 @@ print(response.json())`;
                         value={formData.apiToken}
                         onChange={(e) => setFormData({ ...formData, apiToken: e.target.value })}
                         placeholder="Paste provider API token (e.g. 39ef9ef6dc978c8d4cddea04c88965...)"
-                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-xs"
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 font-mono text-xs"
                       />
                     </div>
 
                     {/* 4. Parameters Grid */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="block font-semibold text-slate-300 mb-1 text-[11px]">
+                        <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
                           Token Param
                         </label>
                         <input
@@ -1300,12 +1386,12 @@ print(response.json())`;
                           value={formData.tokenParam}
                           onChange={(e) => setFormData({ ...formData, tokenParam: e.target.value })}
                           placeholder="token"
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-xs"
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 font-mono text-xs"
                         />
                       </div>
 
                       <div>
-                        <label className="block font-semibold text-slate-300 mb-1 text-[11px]">
+                        <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
                           Max Records Param
                         </label>
                         <input
@@ -1313,12 +1399,12 @@ print(response.json())`;
                           value={formData.recordsParam}
                           onChange={(e) => setFormData({ ...formData, recordsParam: e.target.value })}
                           placeholder="records"
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-xs"
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 font-mono text-xs"
                         />
                       </div>
 
                       <div>
-                        <label className="block font-semibold text-slate-300 mb-1 text-[11px]">
+                        <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
                           Max Records Value
                         </label>
                         <input
@@ -1327,7 +1413,7 @@ print(response.json())`;
                           onChange={(e) => setFormData({ ...formData, maxRecords: Number(e.target.value) })}
                           min={1}
                           max={5000}
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-xs"
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 font-mono text-xs"
                         />
                       </div>
                     </div>
@@ -1335,7 +1421,7 @@ print(response.json())`;
                     {/* Date Params */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block font-semibold text-slate-300 mb-1 text-[11px]">
+                        <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
                           Start Date Param (dt1)
                         </label>
                         <input
@@ -1343,12 +1429,12 @@ print(response.json())`;
                           value={formData.dt1Param}
                           onChange={(e) => setFormData({ ...formData, dt1Param: e.target.value })}
                           placeholder="dt1"
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-xs"
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 font-mono text-xs"
                         />
                       </div>
 
                       <div>
-                        <label className="block font-semibold text-slate-300 mb-1 text-[11px]">
+                        <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
                           End Date Param (dt2)
                         </label>
                         <input
@@ -1356,21 +1442,21 @@ print(response.json())`;
                           value={formData.dt2Param}
                           onChange={(e) => setFormData({ ...formData, dt2Param: e.target.value })}
                           placeholder="dt2"
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-xs"
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 font-mono text-xs"
                         />
                       </div>
                     </div>
 
                     {/* Polling & Mode */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-950 rounded-2xl border border-slate-800">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={formData.autoSync}
                           onChange={(e) => setFormData({ ...formData, autoSync: e.target.checked })}
-                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-700 bg-slate-900"
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 bg-white"
                         />
-                        <span className="font-semibold text-slate-300">Enable Auto High-Speed Sync (2s)</span>
+                        <span className="font-semibold text-slate-700">Enable Auto High-Speed Sync (2s)</span>
                       </label>
 
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -1378,9 +1464,9 @@ print(response.json())`;
                           type="checkbox"
                           checked={formData.enabled}
                           onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-700 bg-slate-900"
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 bg-white"
                         />
-                        <span className="font-semibold text-slate-300">Provider Enabled</span>
+                        <span className="font-semibold text-slate-700">Provider Enabled</span>
                       </label>
                     </div>
 
@@ -1390,9 +1476,9 @@ print(response.json())`;
                         type="button"
                         onClick={handleRunPreview}
                         disabled={isPreviewing}
-                        className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer"
+                        className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer"
                       >
-                        <Sparkles className={`w-4 h-4 text-amber-400 ${isPreviewing ? 'animate-spin' : ''}`} />
+                        <Sparkles className={`w-4 h-4 text-amber-500 ${isPreviewing ? 'animate-spin' : ''}`} />
                         <span>{isPreviewing ? 'Connecting & Fetching...' : 'Run Live Preview Test'}</span>
                       </button>
 
@@ -1400,13 +1486,13 @@ print(response.json())`;
                         <button
                           type="button"
                           onClick={() => setIsModalOpen(false)}
-                          className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs font-semibold"
+                          className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
                         >
                           Cancel
                         </button>
                         <button
                           type="submit"
-                          className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20 active:scale-95"
+                          className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
                         >
                           {editingProvider ? 'Save Changes' : 'Save & Start Syncing'}
                         </button>
@@ -1416,21 +1502,211 @@ print(response.json())`;
 
                   {/* Preview Result Console */}
                   {previewResult && (
-                    <div className="space-y-2 pt-3 border-t border-slate-800 font-mono text-xs">
-                      <div className="flex items-center justify-between text-[11px] text-slate-400">
-                        <span className="font-bold text-white flex items-center gap-1.5">
-                          <span className={`w-2 h-2 rounded-full ${previewResult.success ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                    <div className="space-y-2 pt-3 border-t border-slate-200 font-mono text-xs">
+                      <div className="flex items-center justify-between text-[11px] text-slate-600">
+                        <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${previewResult.success ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                           <span>Live Response Console</span>
                         </span>
                         <span>Ingested: {previewResult.insertedCount || 0} messages</span>
                       </div>
-                      <pre className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-300 max-h-48 overflow-y-auto leading-relaxed text-[11px]">
+                      <pre className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-emerald-400 max-h-48 overflow-y-auto leading-relaxed text-[11px]">
                         {JSON.stringify(previewResult.response, null, 2)}
                       </pre>
                     </div>
                   )}
                 </>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Historical Old SMS Time Sync Modal (Clean White Theme) */}
+      <AnimatePresence>
+        {timeSyncProvider && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 15 }}
+              className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-5 text-slate-800 max-h-[92vh] overflow-y-auto"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+                      <History className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                        Sync Older SMS by Time
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Purani SMS live report aur feed mein import karein
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setTimeSyncProvider(null)}
+                  disabled={isTimeSyncing}
+                  className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Target Provider Info */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500 font-medium">Provider:</span>
+                  <span className="text-xs font-bold text-slate-900">{timeSyncProvider.name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500 font-medium">Target Stream:</span>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold font-mono bg-indigo-100 text-indigo-800 border border-indigo-200">
+                    {timeSyncProvider.partName || (timeSyncProvider.part === 2 ? 'Part 2' : 'Part 1')}
+                  </span>
+                </div>
+                <div className="text-[11px] font-mono text-slate-500 truncate pt-1 border-t border-slate-200">
+                  {timeSyncProvider.apiUrl}
+                </div>
+              </div>
+
+              {/* Quick Presets */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                  Quick Date Range Presets:
+                </label>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setTimePreset(0)}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer"
+                  >
+                    Today 00:00
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTimePreset(1)}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer"
+                  >
+                    Yesterday
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTimePreset(3)}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer"
+                  >
+                    Last 3 Days
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTimePreset(7)}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer"
+                  >
+                    Last 7 Days
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTimePreset(30)}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer"
+                  >
+                    Last 30 Days
+                  </button>
+                </div>
+              </div>
+
+              {/* Inputs */}
+              <div className="space-y-3.5">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1 text-xs">
+                    Start Date & Time (YYYY-MM-DD HH:mm:ss) <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={timeSyncFrom}
+                      onChange={(e) => setTimeSyncFrom(e.target.value)}
+                      placeholder="e.g. 2025-05-10 00:00:00"
+                      className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    />
+                    <Clock className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    API parameter: <code className="text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded font-mono">{timeSyncProvider.dt1Param || 'dt1'}</code>
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1 text-xs">
+                    End Date & Time (Optional)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={timeSyncTo}
+                      onChange={(e) => setTimeSyncTo(e.target.value)}
+                      placeholder="e.g. 2025-05-10 23:59:59 (Leave blank for now)"
+                      className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono text-xs"
+                    />
+                    <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    API parameter: <code className="text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded font-mono">{timeSyncProvider.dt2Param || 'dt2'}</code>
+                  </p>
+                </div>
+              </div>
+
+              {/* Informative Note */}
+              <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed">
+                  Is time ke mutabiq tamam puraane SMS Gateway API se live fetch honge aur seedha <strong>Live Feed</strong> aur <strong>SMS Reports</strong> mein add ho jayenge.
+                </p>
+              </div>
+
+              {/* Feedback alert if any */}
+              {timeSyncFeedback && (
+                <div className={`p-3.5 rounded-2xl border text-xs flex items-center gap-2.5 ${
+                  timeSyncFeedback.success
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                    : 'bg-rose-50 border-rose-300 text-rose-800'
+                }`}>
+                  {timeSyncFeedback.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+                  )}
+                  <span>{timeSyncFeedback.message}</span>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setTimeSyncProvider(null)}
+                  disabled={isTimeSyncing}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteTimeSync}
+                  disabled={isTimeSyncing || !timeSyncFrom.trim()}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-md shadow-indigo-500/20 active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <History className={`w-4 h-4 ${isTimeSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isTimeSyncing ? 'Fetching & Syncing Old SMS...' : 'Fetch & Sync Old SMS'}</span>
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
