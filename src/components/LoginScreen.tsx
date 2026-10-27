@@ -84,8 +84,12 @@ export const LoginScreen: React.FC = () => {
       setError(result.error || 'Incorrect username or password. Please check your credentials.');
       setIsSubmitting(false);
     } else {
-      // Ensure Dashboard is strictly the first view upon login
-      window.history.replaceState(null, '', '/admin/dashboard');
+      // Transition cleanly from /ints/login to active role view
+      if (result.session?.role === 'client') {
+        window.history.replaceState(null, '', '/client/sms-reports');
+      } else {
+        window.history.replaceState(null, '', '/admin/dashboard');
+      }
     }
   };
 
@@ -96,6 +100,11 @@ export const LoginScreen: React.FC = () => {
     <div className="min-h-screen w-full bg-[#030712] flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans selection:bg-emerald-600 selection:text-white">
       {/* Live Background Wallpaper: Custom Video in continuous loop, Custom Image, Celestial Mountain, or Galaxy */}
       <LoginLiveBackground settings={settings} />
+
+      {/* Manual Day / Moon Theme Toggle in Top Right */}
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle size="sm" showLabel />
+      </div>
 
       <div className="relative z-10 w-full max-w-md flex flex-col items-center">
         {/* Main Brand Logo Header (Large, Prominent & Distinct) */}

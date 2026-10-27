@@ -25,12 +25,24 @@ function LoadingFallback() {
 function AppContent() {
   const { session, isLoading } = useAuth();
 
-  // Clean URL handling when unauthenticated
+  // Clean URL handling for /ints/login (VPS URL standard)
   React.useEffect(() => {
-    if (!isLoading && !session) {
-      // Only redirect if visiting protected internal paths (/admin, /client)
-      if (window.location.pathname.startsWith('/admin') || window.location.pathname.startsWith('/client')) {
-        window.history.replaceState(null, '', '/login');
+    if (!isLoading) {
+      const p = window.location.pathname;
+      if (!session) {
+        // When not logged in, ensure browser URL is cleanly set to /ints/login
+        if (p !== '/ints/login') {
+          window.history.replaceState(null, '', '/ints/login');
+        }
+      } else {
+        // When logged in, if on login/root paths, transition to active role dashboard
+        if (p === '/ints/login' || p === '/login' || p === '/' || p === '/ints' || p === '/ints/') {
+          if (session.role === 'admin') {
+            window.history.replaceState(null, '', '/admin/dashboard');
+          } else {
+            window.history.replaceState(null, '', '/client/sms-reports');
+          }
+        }
       }
     }
   }, [session, isLoading]);

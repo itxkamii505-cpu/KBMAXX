@@ -24,19 +24,44 @@ import {
   AppWindow,
   SlidersHorizontal,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { ClientFilterRule, NumberRange } from '../../types';
+import { ClientFilterRule, NumberRange, Reports2FilterRule } from '../../types';
+import { Reports2FilterSection } from './Reports2FilterSection';
 
 export const ClientFilterView: React.FC = () => {
   const { session } = useAuth();
+  // Tab Switcher: 'client' | 'reports2'
+  const [activeTab, setActiveTab] = useState<'client' | 'reports2'>('client');
+
   const [rules, setRules] = useState<ClientFilterRule[]>([]);
   const [ranges, setRanges] = useState<NumberRange[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'app' | 'cli' | 'sms_body' | 'range'>('all');
+
+  // Reports 2 Filter Rules state (Country, Number, CLI, SMS)
+  const [reports2Rules, setReports2Rules] = useState<Reports2FilterRule[]>([]);
+  const [r2Loading, setR2Loading] = useState(false);
+  const [r2Submitting, setR2Submitting] = useState(false);
+  const [r2SearchQuery, setR2SearchQuery] = useState('');
+  const [r2FilterType, setR2FilterType] = useState<'all' | 'country' | 'number' | 'cli' | 'sms'>('all');
+  const [r2Type, setR2Type] = useState<'country' | 'number' | 'cli' | 'sms'>('country');
+  const [r2Pattern, setR2Pattern] = useState('');
+  const [r2MatchType, setR2MatchType] = useState<'contains' | 'exact' | 'starts_with'>('contains');
+  const [r2Action, setR2Action] = useState<'block' | 'mask'>('block');
+  const [r2Notes, setR2Notes] = useState('');
+  const [r2FormError, setR2FormError] = useState('');
+  const [r2FormSuccess, setR2FormSuccess] = useState('');
+
+  // Simulator for Reports 2
+  const [testR2Country, setTestR2Country] = useState('');
+  const [testR2Number, setTestR2Number] = useState('');
+  const [testR2Cli, setTestR2Cli] = useState('');
+  const [testR2Sms, setTestR2Sms] = useState('');
 
   // Form state for creating new blacklist rule
   const [targetType, setTargetType] = useState<'app' | 'cli' | 'sms_body' | 'range' | 'all'>('app');
@@ -106,10 +131,128 @@ export const ClientFilterView: React.FC = () => {
     }
   };
 
+  const fetchReports2Rules = async () => {
+    if (!session) return;
+    try {
+      setR2Loading(true);
+      const res = await fetch('/api/reports2-filters', {
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReports2Rules(data.rules || []);
+      }
+    } catch {} finally {
+      setR2Loading(false);
+    }
+  };
+
   useEffect(() => {
     fetchRules();
     fetchRanges();
+    fetchReports2Rules();
   }, [session]);
+
+  const handleCreateR2Rule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!session || !r2Pattern.trim()) {
+      setR2FormError('Pattern / Value is required');
+      return;
+    }
+    setR2Submitting(true);
+    setR2FormError('');
+    setR2FormSuccess('');
+    try {
+      const res = await fetch('/api/reports2-filters', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({
+          type: r2Type,
+          pattern: r2Pattern.trim(),
+          matchType: r2MatchType,
+          action: r2Action,
+          notes: r2Notes.trim() || undefined,
+          enabled: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setR2FormError(data.error || 'Failed to create Report 2 rule');
+        return;
+      }
+      setReports2Rules(data.rules || []);
+      setR2FormSuccess(`Report 2 block rule for "${r2Pattern.trim()}" created successfully!`);
+      setR2Pattern('');
+      setR2Notes('');
+      setTimeout(() => setR2FormSuccess(''), 4000);
+    } catch (err: any) {
+      setR2FormError(err.message || 'Failed to create rule');
+    } finally {
+      setR2Submitting(false);
+    }
+  };
+
+  const handleToggleR2Rule = async (id: string) => {
+    if (!session) return;
+    try {
+      const res = await fetch(`/api/reports2-filters/${id}/toggle`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReports2Rules(data.rules || []);
+      }
+    } catch {}
+  };
+
+  const handleDeleteR2Rule = async (id: string) => {
+    if (!session) return;
+    try {
+      const res = await fetch(`/api/reports2-filters/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReports2Rules(data.rules || []);
+      }
+    } catch {}
+  };
+
+  const handleCreateR2RuleDirect = async (data: {
+    type: 'country' | 'number' | 'cli' | 'sms';
+    pattern: string;
+    matchType: 'contains' | 'exact' | 'starts_with';
+    action: 'block' | 'mask';
+    notes?: string;
+  }): Promise<{ success: boolean; error?: string }> => {
+    if (!session) return { success: false, error: 'Unauthorized' };
+    try {
+      const res = await fetch('/api/reports2-filters', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({
+          ...data,
+          enabled: true,
+        }),
+      });
+      const resData = await res.json();
+      if (!res.ok || resData.error) {
+        return { success: false, error: resData.error || 'Failed to create Report 2 rule' };
+      }
+      setReports2Rules(resData.rules || []);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to create Report 2 rule' };
+    }
+  };
 
   // Sorted ranges alphabetically A-to-Z for clean, professional UX
   const sortedRanges = useMemo(() => {
@@ -452,10 +595,128 @@ export const ClientFilterView: React.FC = () => {
     };
   }, [rules, testApp, testCli, testRange, testBody]);
 
+  // Reports 2 Filtered Rules
+  const filteredR2Rules = useMemo(() => {
+    return reports2Rules.filter((r) => {
+      if (r2FilterType !== 'all') {
+        const normType = r.type === 'sms_body' ? 'sms' : r.type;
+        if (normType !== r2FilterType) return false;
+      }
+      if (r2SearchQuery.trim()) {
+        const q = r2SearchQuery.toLowerCase().trim();
+        const pat = (r.pattern || '').toLowerCase();
+        const note = (r.notes || '').toLowerCase();
+        const typeStr = (r.type || '').toLowerCase();
+        return pat.includes(q) || note.includes(q) || typeStr.includes(q);
+      }
+      return true;
+    });
+  }, [reports2Rules, r2FilterType, r2SearchQuery]);
+
+  // Reports 2 Live Simulator Result
+  const r2SimulationResult = useMemo(() => {
+    if (!testR2Country && !testR2Number && !testR2Cli && !testR2Sms) {
+      return null;
+    }
+    const cLower = testR2Country.toLowerCase().trim();
+    const nClean = testR2Number.replace(/[^0-9]/g, '');
+    const cliLower = testR2Cli.toLowerCase().trim();
+    const smsLower = testR2Sms.toLowerCase().trim();
+
+    for (const r of reports2Rules) {
+      if (!r.enabled) continue;
+      const pat = (r.pattern || '').toLowerCase().trim();
+      if (!pat) continue;
+      const subPatterns = pat.includes(',') ? pat.split(',').map((s) => s.trim()) : [pat];
+
+      for (const sp of subPatterns) {
+        const testStr = (val: string) => {
+          if (!val) return false;
+          if (r.matchType === 'exact') return val === sp;
+          if (r.matchType === 'starts_with') return val.startsWith(sp);
+          return val.includes(sp);
+        };
+
+        const cleanPatDigits = sp.replace(/[^0-9]/g, '');
+
+        if (r.type === 'country' && cLower && (testStr(cLower) || (cleanPatDigits && nClean.startsWith(cleanPatDigits)))) {
+          return { blocked: true, action: r.action, rule: r, reason: `Blocked by Country rule: "${sp}"` };
+        }
+        if (
+          r.type === 'number' &&
+          nClean &&
+          (testStr(nClean) || testStr(testR2Number.toLowerCase()) || (cleanPatDigits.length >= 3 && nClean.includes(cleanPatDigits)))
+        ) {
+          return { blocked: true, action: r.action, rule: r, reason: `Blocked by Number rule: "${sp}"` };
+        }
+        if (r.type === 'cli' && cliLower && testStr(cliLower)) {
+          return { blocked: true, action: r.action, rule: r, reason: `Blocked by CLI rule: "${sp}"` };
+        }
+        if ((r.type === 'sms' || r.type === 'sms_body') && smsLower && testStr(smsLower)) {
+          return { blocked: true, action: r.action, rule: r, reason: `Blocked by SMS text rule: "${sp}"` };
+        }
+      }
+    }
+    return { blocked: false, reason: 'ALLOWED: No Report 2 block rule matches. Visible in Report 2.' };
+  }, [reports2Rules, testR2Country, testR2Number, testR2Cli, testR2Sms]);
+
   return (
     <div className="max-w-7xl mx-auto space-y-6 font-sans">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl">
+      {/* Top Filter Category Navigation: Client Filter vs Report 2 Filter */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 p-2.5 rounded-2xl shadow-xl">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('client')}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'client'
+                ? 'bg-gradient-to-r from-rose-600 to-rose-700 text-white shadow-lg shadow-rose-950/50 border border-rose-500/50'
+                : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4 text-rose-300" />
+            <span>Client Portal Filter (App, Range & CLI)</span>
+            <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-950/60 text-slate-300 font-mono">
+              {rules.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('reports2')}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'reports2'
+                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-950/50 border border-indigo-500/50'
+                : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            <Shield className="w-4 h-4 text-indigo-300" />
+            <span>Report 2 (Team View) Filter (Country, Number, CLI, SMS)</span>
+            <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-950/60 text-indigo-300 font-mono">
+              {reports2Rules.length}
+            </span>
+          </button>
+        </div>
+
+        <div className="text-[11px] text-slate-400 hidden sm:flex items-center gap-1.5 px-3 py-1 bg-slate-950/60 rounded-xl border border-slate-800/60">
+          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <span>Full blocking controls for both Client Portal and Report 2</span>
+        </div>
+      </div>
+
+      {activeTab === 'reports2' ? (
+        <Reports2FilterSection
+          rules={reports2Rules}
+          loading={r2Loading}
+          onRefresh={fetchReports2Rules}
+          onCreateRule={handleCreateR2RuleDirect}
+          onToggleRule={handleToggleR2Rule}
+          onDeleteRule={handleDeleteR2Rule}
+        />
+      ) : (
+        <>
+          {/* Top Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl">
         <div className="space-y-1">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shadow-md">
@@ -1415,6 +1676,8 @@ export const ClientFilterView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

@@ -867,7 +867,22 @@ class Store {
         }
       }
       if (loadedMessages) {
-        this.messages = loadedMessages;
+        const initialCount = loadedMessages.length;
+        this.messages = loadedMessages.filter(m => {
+          const p = (m.phone || '').trim().toLowerCase();
+          const msg = (m.message || '').trim().toLowerCase();
+          const isFakeStatus = (p === '' || p === 'n/a' || p.length < 4) && 
+            (msg.includes('no records found') || msg.includes('no record found') || msg.includes('no data found') || msg.includes('records not found'));
+          return !isFakeStatus;
+        });
+
+        if (this.messages.length !== initialCount) {
+          const purgedCount = initialCount - this.messages.length;
+          console.log(`[Storage] Purged ${purgedCount} fake error envelope messages ('No Records Found').`);
+          this.needsResave = true;
+          this.statsDirty = true;
+        }
+
         for (const m of this.messages) {
           const detC = getCountryByPhonePrefix(m.phone);
           const trueCountry = (detC && detC !== 'Worldwide') ? detC : (m.country || 'Worldwide');
@@ -2466,6 +2481,19 @@ class Store {
       return null;
     }
 
+    // Reject gateway status/error envelopes being parsed as SMS messages
+    const lowerMsg = cleanMsg.toLowerCase().trim();
+    const isStatusMsg = 
+      lowerMsg.includes('no records found') ||
+      lowerMsg.includes('no record found') ||
+      lowerMsg.includes('no data found') ||
+      lowerMsg.includes('record not found') ||
+      lowerMsg.includes('records not found');
+    const isInvalidPhone = !rawPhone || rawPhone === 'N/A' || rawPhone.toLowerCase() === 'n/a' || rawPhone.replace(/[^\d]/g, '').length < 4;
+    if (isStatusMsg && isInvalidPhone) {
+      return null;
+    }
+
     const cleanSender = sanitizeInputString(data.sender, 64);
     const cleanCli = sanitizeInputString(data.cli, 64);
     const cleanService = sanitizeInputString(data.service, 64);
@@ -3032,7 +3060,7 @@ class Store {
   }
 
   public addReports2FilterRule(data: {
-    type?: 'cli' | 'app' | 'sms_body' | 'number';
+    type?: 'country' | 'number' | 'cli' | 'sms' | 'app' | 'sms_body';
     pattern: string;
     matchType?: 'exact' | 'contains' | 'starts_with';
     action?: 'block' | 'mask';
@@ -3041,10 +3069,13 @@ class Store {
     const pattern = (data.pattern || '').trim();
     if (!pattern) return { error: 'Pattern or keyword is required' };
 
+    const rawType = (data.type || 'cli') as string;
+    const normType = (rawType === 'sms_body' ? 'sms' : rawType) as Reports2FilterRule['type'];
+
     const id = 'r2_' + generateToken().slice(0, 10);
     const rule: Reports2FilterRule = {
       id,
-      type: data.type || 'cli',
+      type: normType,
       pattern,
       matchType: data.matchType || 'contains',
       action: data.action || 'block',
@@ -3062,7 +3093,10 @@ class Store {
     const rule = this.reports2FilterRules.get(id);
     if (!rule) return { error: 'Rule not found' };
 
-    if (data.type !== undefined) rule.type = data.type;
+    if (data.type !== undefined) {
+      const t = data.type as string;
+      rule.type = (t === 'sms_body' ? 'sms' : t) as Reports2FilterRule['type'];
+    }
     if (data.pattern !== undefined) {
       const p = data.pattern.trim();
       if (!p) return { error: 'Pattern cannot be empty' };
@@ -3091,12 +3125,14 @@ class Store {
     return deleted;
   }
 
-  public quickStopReports2(target: 'cli' | 'app', value: string): { success: boolean; action: 'stopped' | 'resumed'; rule?: Reports2FilterRule; error?: string } {
+  public quickStopReports2(target: 'country' | 'number' | 'cli' | 'sms' | 'app' | 'sms_body', value: string): { success: boolean; action: 'stopped' | 'resumed'; rule?: Reports2FilterRule; error?: string } {
     const cleanVal = (value || '').trim();
     if (!cleanVal) return { success: false, action: 'stopped', error: 'Target value is required' };
 
+    const resolvedType = (target === 'sms_body' ? 'sms' : target) as Reports2FilterRule['type'];
+
     const existing = Array.from(this.reports2FilterRules.values()).find(
-      r => r.type === target && r.pattern.toLowerCase() === cleanVal.toLowerCase()
+      r => (r.type === resolvedType || (resolvedType === 'sms' && r.type === 'sms_body')) && r.pattern.toLowerCase() === cleanVal.toLowerCase()
     );
 
     if (existing) {
@@ -3106,11 +3142,11 @@ class Store {
     }
 
     const addRes = this.addReports2FilterRule({
-      type: target,
+      type: resolvedType,
       pattern: cleanVal,
       matchType: 'contains',
       action: 'block',
-      notes: `Quick-stopped for Reports 2`,
+      notes: `Quick-stopped ${resolvedType.toUpperCase()} for Reports 2`,
     });
 
     return { success: true, action: 'stopped', rule: addRes.rule };
@@ -3135,31 +3171,61 @@ class Store {
     const senderStr = (msg.sender || '').toLowerCase().trim();
     const serviceStr = (msg.service || '').toLowerCase().trim();
     const phoneClean = (msg.phone || '').toLowerCase().replace(/[^0-9]/g, '');
+    const phoneRaw = (msg.phone || '').toLowerCase().trim();
     const bodyLower = (msg.message || '').toLowerCase().trim();
 
+    const detC = getCountryByPhonePrefix(msg.phone);
+    const countryStr = ((detC && detC !== 'Worldwide') ? detC : (msg.country || '')).toLowerCase().trim();
+    const rawCountryStr = (msg.country || '').toLowerCase().trim();
+
     for (const rule of rules) {
-      const targetPattern = rule.pattern.toLowerCase().trim();
-      if (!targetPattern) continue;
+      const rawTarget = rule.pattern.toLowerCase().trim();
+      if (!rawTarget) continue;
 
-      let matched = false;
-      const testString = (val: string) => {
-        if (!val) return false;
-        if (rule.matchType === 'exact') return val === targetPattern;
-        if (rule.matchType === 'starts_with') return val.startsWith(targetPattern);
-        return val.includes(targetPattern);
-      };
+      // Support comma-separated patterns
+      const subPatterns = rawTarget.includes(',')
+        ? rawTarget.split(',').map(p => p.trim()).filter(Boolean)
+        : [rawTarget];
 
-      if (rule.type === 'cli') {
-        matched = testString(cliStr) || testString(senderStr);
-      } else if (rule.type === 'app') {
-        matched = testString(serviceStr) || testString(senderStr);
-      } else if (rule.type === 'sms_body') {
-        matched = testString(bodyLower);
-      } else if (rule.type === 'number') {
-        matched = testString(phoneClean) || testString(msg.phone.toLowerCase());
+      for (const targetPattern of subPatterns) {
+        if (!targetPattern) continue;
+
+        const testString = (val: string) => {
+          if (!val) return false;
+          if (rule.matchType === 'exact') return val === targetPattern;
+          if (rule.matchType === 'starts_with') return val.startsWith(targetPattern);
+          return val.includes(targetPattern);
+        };
+
+        let matched = false;
+
+        if (rule.type === 'country') {
+          // Match Country name, country calling code prefix, or raw country
+          const cleanPatternDigits = targetPattern.replace(/[^0-9]/g, '');
+          matched = 
+            testString(countryStr) || 
+            testString(rawCountryStr) ||
+            (cleanPatternDigits.length >= 1 && phoneClean.startsWith(cleanPatternDigits));
+        } else if (rule.type === 'number') {
+          // Match Phone Number digits or raw text
+          const cleanPatternDigits = targetPattern.replace(/[^0-9]/g, '');
+          matched = 
+            testString(phoneClean) || 
+            testString(phoneRaw) ||
+            (cleanPatternDigits.length >= 3 && phoneClean.includes(cleanPatternDigits));
+        } else if (rule.type === 'cli') {
+          // Match CLI, Sender ID, or Service Name
+          matched = testString(cliStr) || testString(senderStr) || testString(serviceStr);
+        } else if (rule.type === 'sms' || rule.type === 'sms_body') {
+          // Match SMS message text / body / OTP
+          matched = testString(bodyLower) || (msg.otp && testString(msg.otp.toLowerCase()));
+        } else if (rule.type === 'app') {
+          // Match App / Service
+          matched = testString(serviceStr) || testString(senderStr) || testString(cliStr);
+        }
+
+        if (matched) return true;
       }
-
-      if (matched) return true;
     }
 
     return false;
@@ -3174,7 +3240,7 @@ class Store {
     for (const rule of rules) {
       const targetPattern = rule.pattern.toLowerCase().trim();
       if (!targetPattern) continue;
-      if (rule.type === 'sms_body' && bodyLower.includes(targetPattern)) {
+      if ((rule.type === 'sms' || rule.type === 'sms_body') && bodyLower.includes(targetPattern)) {
         return true;
       }
     }
@@ -3623,14 +3689,17 @@ class Store {
       list = list.filter(m => (m.timestamp || 0) <= params.to!);
     }
 
-    // Range Name filter
+    // Range Name / Country filter
     if (params.range && params.range.trim() !== '' && params.range.toLowerCase() !== 'all') {
       const target = params.range.toLowerCase().trim();
       list = list.filter(m => {
         const detC = getCountryByPhonePrefix(m.phone);
         const trueC = (detC && detC !== 'Worldwide') ? detC : (m.country || '');
+        if (isReports2) {
+          return trueC.toLowerCase() === target || trueC.toLowerCase().includes(target);
+        }
         const resolved = (this.findRangeForPhone(m.phone, trueC)?.name || trueC).toLowerCase();
-        return resolved === target || resolved.includes(target);
+        return resolved === target || resolved.includes(target) || trueC.toLowerCase() === target;
       });
     }
 
@@ -3692,7 +3761,7 @@ class Store {
         const detectedC = getCountryByPhonePrefix(m.phone);
         const trueCountry = (detectedC && detectedC !== 'Worldwide') ? detectedC : (m.country || 'Worldwide');
         const matchedR = this.findRangeForPhone(m.phone, trueCountry);
-        const resolvedRange = matchedR ? matchedR.name : trueCountry;
+        const resolvedRange = isReports2 ? trueCountry : (matchedR ? matchedR.name : trueCountry);
         const cliName = (m.cli || m.service || m.sender || 'Direct').trim();
 
         const itemValues: Record<string, string> = {
@@ -3757,7 +3826,7 @@ class Store {
         ...m,
         message: finalMsg,
         country: trueCountry,
-        rangeName: matchedR ? matchedR.name : trueCountry,
+        rangeName: isReports2 ? trueCountry : (matchedR ? matchedR.name : trueCountry),
       };
     });
 

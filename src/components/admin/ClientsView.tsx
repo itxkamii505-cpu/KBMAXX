@@ -152,7 +152,7 @@ export const ClientsView: React.FC = () => {
   const configuredBase = settings?.publicServerUrl?.trim()
     ? settings.publicServerUrl.replace(/\/+$/, '')
     : currentOrigin;
-  const directLoginUrl = `${configuredBase}/login`;
+  const directLoginUrl = `${configuredBase}/ints/login`;
 
   const handleCopyClientAccess = (client: ClientAccount) => {
     triggerHapticFeedback(15);

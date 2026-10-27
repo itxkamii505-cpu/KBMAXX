@@ -25,7 +25,7 @@ import {
   Filter
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { formatDateTime, resolveRangeName } from '../../utils/countryLookup';
+import { formatDateTime, resolveRangeName, getCountryFromPhone } from '../../utils/countryLookup';
 import type { SmsMessage, NumberRange, SmsReportGroup, Reports2FilterRule } from '../../types';
 
 interface SMSReportsViewProps {
@@ -168,12 +168,13 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
   // Reports 2 (Team Mode) Independent Stop & Rule State
   const [reports2Rules, setReports2Rules] = useState<Reports2FilterRule[]>([]);
   const [quickStopValue, setQuickStopValue] = useState<string>('');
-  const [quickStopTarget, setQuickStopTarget] = useState<'cli' | 'app'>('cli');
+  const [quickStopTarget, setQuickStopTarget] = useState<'country' | 'number' | 'cli' | 'sms'>('country');
   const [isSubmittingQuickStop, setIsSubmittingQuickStop] = useState<boolean>(false);
   const [quickStopSuccessMsg, setQuickStopSuccessMsg] = useState<string | null>(null);
   const [showRulesModal, setShowRulesModal] = useState<boolean>(false);
   const [newRulePattern, setNewRulePattern] = useState<string>('');
-  const [newRuleType, setNewRuleType] = useState<'cli' | 'app' | 'sms_body' | 'number'>('cli');
+  const [newRuleType, setNewRuleType] = useState<'country' | 'number' | 'cli' | 'sms'>('country');
+  const [newRuleMatchType, setNewRuleMatchType] = useState<'contains' | 'exact' | 'starts_with'>('contains');
   const [newRuleAction, setNewRuleAction] = useState<'block' | 'mask'>('block');
   const [newRuleNotes, setNewRuleNotes] = useState<string>('');
   const [isSavingRule, setIsSavingRule] = useState<boolean>(false);
@@ -274,6 +275,7 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
         body: JSON.stringify({
           type: newRuleType,
           pattern: newRulePattern.trim(),
+          matchType: newRuleMatchType,
           action: newRuleAction,
           notes: newRuleNotes.trim() || undefined,
           enabled: true,
@@ -547,13 +549,20 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
         return item;
       });
     } else {
-      exportData = (displayItems as SmsMessage[]).map(m => ({
-        'Date': m.dateStr || formatDateTime(m.timestamp),
-        'Range': resolveRangeName(m.country, m.phone, ranges) || m.rangeName || 'Direct',
-        'Number': m.phone,
-        'CLI': m.cli || m.service || m.sender || 'Direct',
-        'SMS': m.message,
-      }));
+      exportData = (displayItems as SmsMessage[]).map(m => {
+        const countryVal = m.country && m.country !== 'Worldwide' 
+          ? m.country 
+          : (getCountryFromPhone(m.phone) || m.country || 'Worldwide');
+        return {
+          'Date': m.dateStr || formatDateTime(m.timestamp),
+          ...(isReports2 
+            ? { 'Country': countryVal } 
+            : { 'Range': resolveRangeName(m.country, m.phone, ranges) || m.rangeName || 'Direct' }),
+          'Number': m.phone,
+          'CLI': m.cli || m.service || m.sender || 'Direct',
+          'SMS': m.message,
+        };
+      });
     }
 
     const XLSX = await import('xlsx');
@@ -620,17 +629,24 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
                   onChange={(e) => setQuickStopTarget(e.target.value as any)}
                   className="bg-transparent font-bold text-slate-700 outline-none cursor-pointer"
                 >
-                  <option value="cli">CLI / Sender</option>
-                  <option value="app">App / Service</option>
+                  <option value="country">Country</option>
+                  <option value="number">Number</option>
+                  <option value="cli">CLI</option>
+                  <option value="sms">SMS</option>
                 </select>
               </div>
 
               <input
                 type="text"
-                placeholder={quickStopTarget === 'cli' ? "Enter CLI to stop for team (e.g. WHATSAPP, OTP, PAYPAL)" : "Enter App name to stop for team"}
+                placeholder={
+                  quickStopTarget === 'country' ? 'Enter Country to block for Report 2 (e.g. Guinea, Pakistan, 224, 92)' :
+                  quickStopTarget === 'number' ? 'Enter Number / Prefix to block (e.g. +224..., 92300...)' :
+                  quickStopTarget === 'cli' ? 'Enter CLI / Brand to block (e.g. AstraSMS, WHATSAPP, OTP)' :
+                  'Enter SMS keyword to block (e.g. verification, code, otp)'
+                }
                 value={quickStopValue}
                 onChange={(e) => setQuickStopValue(e.target.value)}
-                className="flex-1 min-w-[200px] px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                className="flex-1 min-w-[220px] px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
               />
 
               <button
@@ -639,7 +655,7 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
                 className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
               >
                 <Lock className="w-3.5 h-3.5" />
-                <span>Stop in Team Reports</span>
+                <span>Stop in Report 2</span>
               </button>
             </form>
 
@@ -715,25 +731,42 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
               {/* Add New Rule Form */}
               <form onSubmit={handleCreateCustomRule} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
                 <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Add Rule for Team View</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                   <div>
                     <label className="block text-[11px] font-medium text-slate-500 mb-1">Rule Target</label>
                     <select
                       value={newRuleType}
                       onChange={(e) => setNewRuleType(e.target.value as any)}
-                      className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl"
+                      className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl font-bold text-slate-800"
                     >
-                      <option value="cli">CLI / Sender</option>
-                      <option value="app">App / Service</option>
-                      <option value="sms_body">SMS Body Text</option>
-                      <option value="number">Phone Number</option>
+                      <option value="country">Country</option>
+                      <option value="number">Number</option>
+                      <option value="cli">CLI</option>
+                      <option value="sms">SMS</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-500 mb-1">Match Type</label>
+                    <select
+                      value={newRuleMatchType}
+                      onChange={(e) => setNewRuleMatchType(e.target.value as any)}
+                      className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl font-medium text-slate-700"
+                    >
+                      <option value="contains">Contains</option>
+                      <option value="exact">Exact Match</option>
+                      <option value="starts_with">Starts With</option>
                     </select>
                   </div>
                   <div>
                     <label className="block text-[11px] font-medium text-slate-500 mb-1">Pattern / Value</label>
                     <input
                       type="text"
-                      placeholder="e.g. WHATSAPP or OTP"
+                      placeholder={
+                        newRuleType === 'country' ? 'e.g. Guinea or Pakistan' :
+                        newRuleType === 'number' ? 'e.g. 224620000000' :
+                        newRuleType === 'cli' ? 'e.g. WHATSAPP or OTP' :
+                        'e.g. verification code'
+                      }
                       value={newRulePattern}
                       onChange={(e) => setNewRulePattern(e.target.value)}
                       className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl"
@@ -744,7 +777,7 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
                     <select
                       value={newRuleAction}
                       onChange={(e) => setNewRuleAction(e.target.value as any)}
-                      className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl"
+                      className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl font-semibold"
                     >
                       <option value="block">Block SMS (Drop)</option>
                       <option value="mask">Mask Sensitive Body</option>
@@ -1001,10 +1034,10 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
               </div>
             </div>
 
-            {/* Row 3: Range full-width compact box */}
+            {/* Row 3: Range / Country full-width compact box */}
             <div>
               <label className="block text-[11px] sm:text-xs font-serif text-slate-500 mb-0.5 sm:mb-1">
-                Range
+                {isReports2 ? 'Country' : 'Range'}
               </label>
               <div className="relative">
                 <select
@@ -1013,13 +1046,29 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
                   className="w-full appearance-none px-3 py-1.5 sm:py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 font-sans shadow-2xs focus:outline-none focus:border-blue-500 cursor-pointer pr-8 transition-colors"
                 >
                   <option value="All">All</option>
-                  {[...ranges]
-                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }))
-                    .map((r) => (
-                      <option key={r.id} value={r.name}>
-                        {r.name}
-                      </option>
-                    ))}
+                  {isReports2 ? (
+                    Array.from(
+                      new Set([
+                        ...ranges.map((r) => r.countryNote || (r as any).country || '').filter(Boolean),
+                        ...messages.map((m) => m.country || getCountryFromPhone(m.phone)).filter(Boolean)
+                      ])
+                    )
+                      .filter((c) => c !== 'Worldwide' && c !== 'All')
+                      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+                      .map((countryName) => (
+                        <option key={countryName} value={countryName}>
+                          {countryName}
+                        </option>
+                      ))
+                  ) : (
+                    [...ranges]
+                      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }))
+                      .map((r) => (
+                        <option key={r.id} value={r.name}>
+                          {r.name}
+                        </option>
+                      ))
+                  )}
                 </select>
                 <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
@@ -1036,7 +1085,7 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
                     { key: 'hour', label: 'Hour' },
                     { key: 'date', label: 'Date' },
                     { key: 'month', label: 'Month' },
-                    { key: 'range', label: 'Range' },
+                    { key: 'range', label: isReports2 ? 'Country' : 'Range' },
                     { key: 'number', label: 'Number' },
                     { key: 'cli', label: 'CLI' },
                   ] as const
@@ -1253,7 +1302,7 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
                         <th className="py-3 px-3.5 border-r border-slate-200 whitespace-nowrap">
                           <div className="flex items-center gap-1.5 text-slate-600">
                             <Layers className="w-3.5 h-3.5 text-slate-400" />
-                            <span>Range</span>
+                            <span>{isReports2 ? 'Country' : 'Range'}</span>
                           </div>
                         </th>
                       )}
@@ -1324,7 +1373,12 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
                   // Normal SMS Table Rows (Client column removed)
                   (paginatedItems as SmsMessage[]).map((msg) => {
                     const dateStr = msg.dateStr || formatDateTime(msg.timestamp);
-                    const rangeName = resolveRangeName(msg.country, msg.phone, ranges) || msg.rangeName || 'Direct';
+                    const countryName = msg.country && msg.country !== 'Worldwide' 
+                      ? msg.country 
+                      : (getCountryFromPhone(msg.phone) || msg.country || 'Worldwide');
+                    const rangeName = isReports2 
+                      ? countryName 
+                      : (resolveRangeName(msg.country, msg.phone, ranges) || msg.rangeName || 'Direct');
                     const cliName = (msg.cli || msg.service || msg.sender || 'Direct').trim();
 
                     return (
@@ -1336,7 +1390,11 @@ export const SMSReportsView: React.FC<SMSReportsViewProps> = ({
                         )}
                         {visibleColumns.range && (
                           <td className="py-3 px-3.5 whitespace-nowrap border-r border-slate-100">
-                            <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold border border-slate-200 text-[11px]">
+                            <span className={`px-2.5 py-1 rounded-lg font-semibold border text-[11px] ${
+                              isReports2 
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200' 
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                            }`}>
                               {rangeName}
                             </span>
                           </td>

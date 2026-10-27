@@ -421,7 +421,7 @@ app.post(
 // 1. AUTHENTICATION & SESSION ENDPOINTS
 // ==========================================
 
-app.post('/api/auth/login', (req: Request, res: Response) => {
+const handleLoginAuth = (req: Request, res: Response) => {
   const clientIp = getClientIp(req);
   const ipCheck = loginRateLimiter.check(clientIp);
   if (!ipCheck.allowed) {
@@ -457,6 +457,15 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
       ...(result.session.role === 'admin' ? { webhookToken: settings.webhookToken, adminUsername: settings.adminUsername } : {})
     },
   });
+};
+
+// Accept login on standard API route and direct VPS path /ints/login
+app.post('/api/auth/login', handleLoginAuth);
+app.post('/ints/login', handleLoginAuth);
+
+// Direct redirect from legacy /login or /ints to official /ints/login
+app.get(['/login', '/ints', '/ints/'], (_req: Request, res: Response) => {
+  res.redirect(302, '/ints/login');
 });
 
 app.get('/api/auth/me', requireAuth, (req: AuthRequest, res: Response) => {
@@ -783,7 +792,7 @@ app.delete('/api/reports2-filters/:id', requireAdmin, (req: AuthRequest, res: Re
 app.post('/api/reports2-filters/quick-stop', requireAdmin, (req: AuthRequest, res: Response) => {
   const { target, value } = req.body || {};
   if (!target || !value) {
-    return res.status(400).json({ error: 'target (cli|app|number) and value are required' });
+    return res.status(400).json({ error: 'target (country|number|cli|sms) and value are required' });
   }
   const result = store.quickStopReports2(target, String(value));
   if (result.error) {
@@ -1842,6 +1851,27 @@ function extractSmsItems(data: any): any[] {
     }
   }
   if (typeof data === 'object') {
+    // Check if this object is an API status/error envelope rather than SMS data
+    const msgStr = typeof data.message === 'string' ? data.message.trim().toLowerCase() : '';
+    const errStr = typeof data.error === 'string' ? data.error.trim().toLowerCase() : '';
+    const statusVal = data.status !== undefined ? String(data.status).toLowerCase().trim() : '';
+    const responseVal = data.response !== undefined ? String(data.response).toLowerCase().trim() : '';
+    const resultVal = data.result !== undefined ? String(data.result).toLowerCase().trim() : '';
+
+    const isErrorOrEmptyStatus = 
+      statusVal === 'error' || 
+      statusVal === 'false' || 
+      statusVal === 'failed' || 
+      statusVal === '0' ||
+      responseVal === 'error' ||
+      resultVal === 'failed' ||
+      msgStr.includes('no records found') ||
+      msgStr.includes('no record found') ||
+      msgStr.includes('no data found') ||
+      msgStr.includes('record not found') ||
+      errStr.includes('no records found') ||
+      errStr.includes('no data found');
+
     const candidateKeys = [
       'data', 'records', 'messages', 'stats', 'sms', 'list', 'rows', 
       'results', 'items', 'response', 'result', 'payload', 'logs', 'history'
@@ -1857,10 +1887,20 @@ function extractSmsItems(data: any): any[] {
     for (const val of Object.values(data)) {
       if (Array.isArray(val) && val.length > 0) return val;
     }
-    // Single message object
-    if (
+
+    // If candidate arrays were empty or not found, and the object itself indicates error/empty status, return empty
+    if (isErrorOrEmptyStatus) {
+      return [];
+    }
+
+    // Single message object - MUST have a phone/recipient field to avoid extracting error responses as SMS
+    const hasPhone = Boolean(
       data.phone || data.num || data.number || data.mobile || data.msisdn ||
-      data.message || data.text || data.sms || data.msg || data.otp || data.cli
+      data.recipient || data.destination || data.to || data.phonenumber || data.phone_number
+    );
+    if (
+      hasPhone &&
+      (data.message || data.text || data.sms || data.msg || data.otp || data.cli)
     ) {
       return [data];
     }
@@ -2296,6 +2336,15 @@ async function syncProvider(provider: any, options?: { fromTime?: string; toTime
           const rawCountry = item.country || item.nation || item.rangs || item.range || item.country_name || undefined;
           const rawDate = (timeField && item[timeField]) || item.dt || item.timestamp || item.date || item.datetime || item.date_time || item.dateTime || item.created_at || item.received_at || item.time || item.sent_time || item.insert_date || item.sms_date;
           const parsedDate = parseApiDateAndTimestamp(rawDate);
+
+          // Skip fake status/error envelopes (e.g. AstraSMS returning {"message": "No Records Found"})
+          const lowerMsg = rawMsg.toLowerCase().trim();
+          const isFakeStatusMsg = 
+            (!rawPhone || rawPhone.length < 4 || rawPhone.toLowerCase() === 'n/a') && 
+            (lowerMsg.includes('no records found') || lowerMsg.includes('no record found') || lowerMsg.includes('no data found') || lowerMsg.includes('records not found'));
+          if (isFakeStatusMsg) {
+            continue;
+          }
 
           if (rawPhone || rawMsg) {
             const added = store.addMessage({

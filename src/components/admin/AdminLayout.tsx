@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BrandLogo } from '../common/BrandLogo';
+import { ThemeToggle } from '../common/ThemeToggle';
 import { DashboardView } from './DashboardView';
 import { ApiProvidersView } from './ApiProvidersView';
 import { ClientsView } from './ClientsView';
@@ -144,6 +145,7 @@ export const AdminLayout: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <ThemeToggle size="sm" />
           <button
             type="button"
             onClick={() => logout('Admin logged out safely.')}
@@ -274,6 +276,15 @@ export const AdminLayout: React.FC = () => {
             </div>
           ) : null}
 
+          {/* Theme Selector (Day / Moon) */}
+          <div className="flex items-center justify-center">
+            {!sidebarCollapsed ? (
+              <ThemeToggle variant="pill" showLabel className="w-full justify-around" />
+            ) : (
+              <ThemeToggle size="sm" />
+            )}
+          </div>
+
           {/* Logout Button */}
           <button
             id="admin-logout-btn"
@@ -292,6 +303,18 @@ export const AdminLayout: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Top Header Bar for Desktop with Section Title & Theme Toggle */}
+        <div className="hidden md:flex items-center justify-between px-6 py-2.5 border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider">
+              {navItems.find(i => i.id === activeTab)?.label || 'Admin Panel'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <ThemeToggle size="sm" showLabel />
+          </div>
+        </div>
+
         <main className="flex-1 p-2 sm:p-3.5 md:p-5 lg:p-6 xl:p-8 max-w-[1600px] w-full mx-auto">
           <Suspense fallback={<div className="py-16 text-center text-xs font-mono text-emerald-400 animate-pulse">Loading...</div>}>
           {activeTab === 'sms-reports' && <SMSReportsView reportType="primary" />}

@@ -100,6 +100,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (reason) {
       setLogoutReason(reason);
     }
+    try {
+      if (typeof window !== 'undefined' && window.location.pathname !== '/ints/login') {
+        window.history.replaceState(null, '', '/ints/login');
+      }
+    } catch {}
   }, []);
 
   const refreshMe = useCallback(async () => {

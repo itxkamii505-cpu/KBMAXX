@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BrandLogo } from '../common/BrandLogo';
+import { ThemeToggle } from '../common/ThemeToggle';
 import { SMSReportsView } from '../reports/SMSReportsView';
 import { WhiteNoisePortalView } from '../whitenoise/WhiteNoisePortalView';
 
@@ -93,8 +94,11 @@ export const ClientPortalLayout: React.FC = () => {
             )}
           </div>
 
-          {/* User Session, Timer & Logout */}
+          {/* User Session, Theme, Timer & Logout */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Theme Toggle Button (Day / Moon) */}
+            <ThemeToggle size="sm" />
+
             {/* User badge */}
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700">
               <div className="w-5 h-5 rounded-md bg-gradient-to-br from-blue-500 to-emerald-500 text-white flex items-center justify-center font-bold text-[10px]">

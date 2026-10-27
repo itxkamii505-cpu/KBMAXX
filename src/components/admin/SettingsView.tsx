@@ -390,7 +390,7 @@ export const SettingsView: React.FC = () => {
   const currentHost = settings?.publicServerUrl?.trim()
     ? settings.publicServerUrl.replace(/\/+$/, '')
     : (typeof window !== 'undefined' ? window.location.origin : 'http://your-vps-ip');
-  const directLoginUrl = `${currentHost}/login`;
+  const directLoginUrl = `${currentHost}/ints/login`;
 
   const nginxRemovePortCommands = `# 1. Install Nginx if not already installed
 sudo apt update && sudo apt install -y nginx
@@ -418,7 +418,7 @@ EOF
 # 3. Test and restart Nginx
 sudo nginx -t && sudo systemctl restart nginx
 
-# 4. Now open your VPS IP in browser (e.g. http://your-vps-ip/login) directly without :3000!`;
+# 4. Now open your VPS IP in browser (e.g. http://your-vps-ip/ints/login) directly without :3000!`;
 
   const directPort80Commands = `# 1. Grant Node.js permission to bind to privileged Port 80 without root
 sudo setcap 'cap_net_bind_service=+ep' $(which node)
@@ -1986,7 +1986,7 @@ pm2 logs kbmax`;
                   <h3 className="text-sm font-bold text-white">Method 1: Remove Port 3000 via Nginx (Direct VPS Root)</h3>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Allows users to open <code className="text-emerald-300 font-mono font-bold">http://your-vps-ip/login</code> directly without typing :3000
+                  Allows users to open <code className="text-emerald-300 font-mono font-bold">http://your-vps-ip/ints/login</code> directly without typing :3000
                 </p>
               </div>
               <button

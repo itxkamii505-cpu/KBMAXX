@@ -11,7 +11,7 @@ export interface WhiteNoiseDirectNumber {
 
 export interface Reports2FilterRule {
   id: string;
-  type: 'cli' | 'app' | 'sms_body' | 'number';
+  type: 'country' | 'number' | 'cli' | 'sms' | 'app' | 'sms_body';
   pattern: string;
   matchType?: 'contains' | 'exact' | 'starts_with';
   action: 'block' | 'mask'; // block = completely hide, mask = hide text but keep OTP
